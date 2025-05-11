@@ -1,6 +1,7 @@
 use clap::Parser;
 use kinfer::model::ModelRunner;
 use kinfer::runtime::ModelRuntime;
+use kinfer_kbot::initialize_logging;
 use kinfer_kbot::KBotProvider;
 use std::path::Path;
 use std::sync::Arc;
@@ -24,6 +25,8 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    initialize_logging();
+
     let args = Args::parse();
     let model_path = Path::new(&args.model_path);
 
