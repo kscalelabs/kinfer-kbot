@@ -1,7 +1,13 @@
 [package]
 name = "kinfer-kbot"
 version = "0.1.0"
+authors = [
+    "Benjamin Bolte <ben@kscale.dev>",
+]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/kscale-dev/kinfer-kbot"
+description = "K-Infer runtime for the K-Bot"
 
 [dependencies]
 
