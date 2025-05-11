@@ -37,10 +37,11 @@ const ACTUATOR_NAME_TO_ID: &[(&str, u32)] = &[
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
+    dry_run: bool,
 }
 
 impl KBotProvider {
-    pub async fn new() -> Result<Self, ModelError> {
+    pub async fn new(dry_run: bool) -> Result<Self, ModelError> {
         let kbot_actuators = actuators::Actuator::create_kbot_actuators();
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
 
@@ -82,7 +83,11 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self { actuators, imu })
+        Ok(Self {
+            actuators,
+            imu,
+            dry_run,
+        })
     }
 }
 
@@ -178,6 +183,10 @@ impl ModelProvider for KBotProvider {
         action: Array<f32, IxDyn>,
     ) -> Result<(), ModelError> {
         assert_eq!(joint_names.len(), action.len());
+
+        if self.dry_run {
+            return Ok(());
+        }
 
         let actuator_ids = joint_names
             .iter()
