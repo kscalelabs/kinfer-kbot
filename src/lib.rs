@@ -2,6 +2,7 @@ pub mod actuators;
 pub mod constants;
 pub mod imu;
 
+use ::imu::{Quaternion, Vector3};
 use actuators::{Actuator, ActuatorCommand};
 use async_trait::async_trait;
 use constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
@@ -155,8 +156,27 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_projected_gravity(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        // TODO: Use the quaternion to get the projected gravity vector.
-        Err(ModelError::Provider("Not implemented".to_string()))
+        let values = self
+            .imu
+            .get_values()
+            .map_err(|e| ModelError::Provider(e.to_string()))?;
+        let projected_gravity = Quaternion {
+            x: values.quat_x,
+            y: values.quat_y,
+            z: values.quat_z,
+            w: values.quat_w,
+        }
+        .rotate(Vector3::new(0.0, 0.0, -9.81));
+        Ok(Array::from_shape_vec(
+            (3,),
+            vec![
+                projected_gravity.x,
+                projected_gravity.y,
+                projected_gravity.z,
+            ],
+        )
+        .map_err(|e| ModelError::Provider(e.to_string()))?
+        .into_dyn())
     }
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
