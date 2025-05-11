@@ -1,4 +1,4 @@
-# K-Infer K-Bot
+# kinfer-kbot
 
 This project provides the K-Infer runtime for the K-Bot.
 
