@@ -310,7 +310,7 @@ impl Actuator {
         })
     }
 
-    pub async fn get_actuators_state(&self, actuator_ids: Vec<u8>) -> Result<Vec<ActuatorState>> {
+    pub async fn get_actuators_state(&self, actuator_ids: Vec<u32>) -> Result<Vec<ActuatorState>> {
         let mut responses = vec![];
         let supervisor = self.supervisor.lock().await;
 

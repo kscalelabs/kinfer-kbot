@@ -1,6 +1,9 @@
 use eyre::Result;
-use hiwonder::{ImuFrequency, IMU as HiwonderIMU};
-use std::sync::{Arc, RwLock};
+use imu::{HiwonderReader, ImuFrequency, ImuReader};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
@@ -60,10 +63,10 @@ impl IMU {
                 interface, baud_rate
             );
 
-            match HiwonderIMU::new(interface, baud_rate) {
+            match HiwonderReader::new(interface, baud_rate, Duration::from_secs(1), true) {
                 Ok(mut imu) => {
                     info!("Successfully created IMU reader on {}", interface);
-                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz100) {
+                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz100, Duration::from_secs(1)) {
                         error!("Failed to set IMU frequency: {}", e);
                         continue;
                     }
@@ -77,7 +80,7 @@ impl IMU {
             }
         }
 
-        let mut imu_hardware = imu_hardware
+        let imu_hardware = imu_hardware
             .ok_or_else(|| eyre::eyre!("Failed to initialize IMU on any provided interface"))?;
 
         let data = Arc::new(RwLock::new(ImuValues::default()));
@@ -87,27 +90,52 @@ impl IMU {
         let background_task = tokio::spawn(async move {
             let mut read_errors = 0;
             loop {
-                match imu_hardware.read_data() {
-                    Ok(Some((acc, gyro, angle, quat))) => {
+                match imu_hardware.get_data() {
+                    Ok(data) => {
                         if let Ok(mut imu_data) = data_clone.write() {
-                            imu_data.accel_x = acc[0] as f64;
-                            imu_data.accel_y = acc[1] as f64;
-                            imu_data.accel_z = acc[2] as f64;
-                            imu_data.gyro_x = gyro[0] as f64;
-                            imu_data.gyro_y = gyro[1] as f64;
-                            imu_data.gyro_z = gyro[2] as f64;
-                            imu_data.roll = angle[0] as f64;
-                            imu_data.pitch = angle[1] as f64;
-                            imu_data.yaw = angle[2] as f64;
-                            imu_data.quaternion_w = quat[0] as f64;
-                            imu_data.quaternion_x = quat[1] as f64;
-                            imu_data.quaternion_y = quat[2] as f64;
-                            imu_data.quaternion_z = quat[3] as f64;
+                            let accel = match data.accelerometer {
+                                Some(accel) => accel,
+                                None => {
+                                    error!("Accelerometer data not available");
+                                    continue;
+                                }
+                            };
+                            let gyro = match data.gyroscope {
+                                Some(gyro) => gyro,
+                                None => {
+                                    error!("Gyroscope data not available");
+                                    continue;
+                                }
+                            };
+                            let angle = match data.euler {
+                                Some(angle) => angle,
+                                None => {
+                                    error!("Euler angles data not available");
+                                    continue;
+                                }
+                            };
+                            let quat = match data.quaternion {
+                                Some(quat) => quat,
+                                None => {
+                                    error!("Quaternion data not available");
+                                    continue;
+                                }
+                            };
+                            imu_data.accel_x = accel.x as f64;
+                            imu_data.accel_y = accel.y as f64;
+                            imu_data.accel_z = accel.z as f64;
+                            imu_data.gyro_x = gyro.x as f64;
+                            imu_data.gyro_y = gyro.y as f64;
+                            imu_data.gyro_z = gyro.z as f64;
+                            imu_data.roll = angle.x as f64;
+                            imu_data.pitch = angle.y as f64;
+                            imu_data.yaw = angle.z as f64;
+                            imu_data.quaternion_w = quat.w as f64;
+                            imu_data.quaternion_x = quat.x as f64;
+                            imu_data.quaternion_y = quat.y as f64;
+                            imu_data.quaternion_z = quat.z as f64;
                         }
                         read_errors = 0;
-                    }
-                    Ok(None) => {
-                        // No data available, not an error
                     }
                     Err(e) => {
                         read_errors += 1;
