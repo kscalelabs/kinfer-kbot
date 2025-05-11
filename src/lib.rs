@@ -1,7 +1,7 @@
 pub mod actuators;
 pub mod imu;
 
-use actuators::Actuator;
+use actuators::{Actuator, ActuatorCommand};
 use async_trait::async_trait;
 use imu::IMU;
 use kinfer::{ModelError, ModelProvider};
@@ -177,6 +177,8 @@ impl ModelProvider for KBotProvider {
         joint_names: Vec<String>,
         action: Array<f32, IxDyn>,
     ) -> Result<(), ModelError> {
+        assert_eq!(joint_names.len(), action.len());
+
         let actuator_ids = joint_names
             .iter()
             .map(|name| {
@@ -186,16 +188,26 @@ impl ModelProvider for KBotProvider {
                     .map(|(_, id)| *id)
             })
             .collect::<Vec<_>>();
-        let actuator_state = self.actuators.get_actuators_state(actuator_ids).await?;
-        let joint_angles = actuator_state
-            .iter()
-            .map(|state| state.position)
-            .collect::<Vec<_>>();
-        let joint_velocities = actuator_state
-            .iter()
-            .map(|state| state.velocity)
-            .collect::<Vec<_>>();
-        Err(ModelError::Provider("Not implemented".to_string()))
+
+        self.actuators
+            .command_actuators(
+                joint_names
+                    .iter()
+                    .zip(action.iter())
+                    .map(|(name, action)| ActuatorCommand {
+                        actuator_id: ACTUATOR_NAME_TO_ID
+                            .iter()
+                            .find(|(_, id)| *name == **id)
+                            .map(|(_, id)| *id)?,
+                        position: Some(*action),
+                        velocity: None,
+                        torque: None,
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
+
+        Ok(())
     }
 }
 
