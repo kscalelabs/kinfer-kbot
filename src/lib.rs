@@ -28,7 +28,6 @@ impl KBotProvider {
             actuators::Actuator::new(
                 vec!["can0", "can1", "can2", "can3", "can4"],
                 Duration::from_millis(100),
-                Duration::from_millis(20),
                 &kbot_actuators,
             )
         )
@@ -46,12 +45,14 @@ impl KBotProvider {
                 if let Err(e) = actuators
                     .configure_actuator(actuators::ConfigureRequest {
                         actuator_id: *id as u32,
-                        kp: Some(kp as f64),
-                        kd: Some(kd as f64),
-                        max_torque: Some(max_torque as f64),
+                        kp: Some(kp),
+                        kd: Some(kd),
+                        max_torque: Some(max_torque),
                         torque_enabled: Some(!dry_run),
                         zero_position: None,
                         new_actuator_id: None,
+                        max_velocity: Some(5.0),
+                        max_current: Some(10.0),
                     })
                     .await
                 {
