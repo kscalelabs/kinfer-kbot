@@ -14,10 +14,11 @@ use tracing_subscriber::FmtSubscriber;
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
+    dry_run: bool,
 }
 
 impl KBotProvider {
-    pub async fn new(torque_enabled: bool) -> Result<Self, ModelError> {
+    pub async fn new(dry_run: bool) -> Result<Self, ModelError> {
         let kbot_actuators = actuators::Actuator::create_kbot_actuators();
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
 
@@ -47,7 +48,7 @@ impl KBotProvider {
                         kp: Some(kp as f64),
                         kd: Some(kd as f64),
                         max_torque: Some(max_torque as f64),
-                        torque_enabled: Some(torque_enabled),
+                        torque_enabled: Some(!dry_run),
                         zero_position: None,
                         new_actuator_id: None,
                     })
@@ -60,7 +61,11 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self { actuators, imu })
+        Ok(Self {
+            actuators,
+            imu,
+            dry_run,
+        })
     }
 }
 
@@ -199,6 +204,10 @@ impl ModelProvider for KBotProvider {
         action: Array<f32, IxDyn>,
     ) -> Result<(), ModelError> {
         assert_eq!(joint_names.len(), action.len());
+
+        if self.dry_run {
+            return Ok(());
+        }
 
         let commands: Vec<ActuatorCommand> = joint_names
             .iter()
