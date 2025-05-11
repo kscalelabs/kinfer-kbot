@@ -19,5 +19,5 @@ tokio = { version = "1.0", features = ["full"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 
-robstride = { version = "0.3.4", features = ["instant_command"] }
+robstride = { version = "0.3.6", features = ["instant_command"] }
 imu = "0.7.3"
