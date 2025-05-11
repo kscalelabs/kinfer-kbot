@@ -17,4 +17,4 @@ kinfer = "0.4.1"
 ndarray = "0.16.1"
 tokio = { version = "1.0", features = ["full"] }
 robstride = { version = "0.3.6", features = ["instant_command"] }
-imu = "0.7.3"
+imu = "0.7.5"
