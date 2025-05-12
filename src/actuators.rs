@@ -52,8 +52,6 @@ pub struct ActuatorState {
 
 pub struct Actuator {
     supervisor: Arc<Mutex<Supervisor>>,
-    feedback_debounce_ms: u64,
-    last_feedback_request: Mutex<Option<Instant>>,
 }
 
 impl Actuator {
@@ -61,7 +59,6 @@ impl Actuator {
         ports: Vec<&str>,
         actuator_timeout: Duration,
         actuators_config: &[(u8, ActuatorConfiguration)],
-        feedback_debounce_ms: u64,
     ) -> Result<Self> {
         let mut supervisor = Supervisor::new(actuator_timeout)?;
         let mut found_motors = vec![false; actuators_config.len()];
@@ -126,8 +123,6 @@ impl Actuator {
 
         let actuator = Self {
             supervisor: Arc::new(Mutex::new(supervisor)),
-            feedback_debounce_ms,
-            last_feedback_request: Mutex::new(None),
         };
 
         actuator
@@ -142,9 +137,10 @@ impl Actuator {
         commands: Vec<ActuatorCommand>,
     ) -> Result<Vec<ActionResult>> {
         let mut results = vec![];
+        let mut supervisor = self.supervisor.lock().await;
+
         for command in commands {
             let motor_id = command.actuator_id as u8;
-            let mut supervisor = self.supervisor.lock().await;
             let result = supervisor
                 .command(
                     motor_id,
@@ -166,6 +162,7 @@ impl Actuator {
                 error: result.err().map(|e| e.to_string()),
             });
         }
+
         Ok(results)
     }
 
@@ -177,8 +174,8 @@ impl Actuator {
             kp: config.kp.unwrap_or(0.0), // We assume default kp is 0 if not specified
             kd: config.kd.unwrap_or(0.0), // We assume default kd is 0 if not specified
             max_torque: config.max_torque,
-            max_velocity: Some(config.max_velocity.unwrap_or(5.0)), // We assume default max velocity is 5 if not specified
-            max_current: Some(config.max_current.unwrap_or(10.0)), // We assume default max current is 10 if not specified
+            max_velocity: config.max_velocity,
+            max_current: config.max_current,
         };
 
         let result = supervisor.configure(motor_id, control_config).await;
@@ -208,14 +205,16 @@ impl Actuator {
     pub async fn get_actuators_state(&self, actuator_ids: Vec<u32>) -> Result<Vec<ActuatorState>> {
         let mut responses = vec![];
 
+        // Triggers a read, then waits for a fixed amount of time.
         self.update_feedback(actuator_ids.clone()).await?;
-        let supervisor = self.supervisor.lock().await;
 
+        // Reads the latest feedback from each actuator.
+        let supervisor = self.supervisor.lock().await;
         for id in actuator_ids {
             if let Ok(Some((feedback, ts))) = supervisor.get_feedback(id as u8).await {
                 responses.push(ActuatorState {
                     actuator_id: id as u32,
-                    online: ts.elapsed().unwrap_or(Duration::from_secs(1)) < Duration::from_secs(1),
+                    online: true,
                     position: Some(feedback.angle.to_degrees() as f64),
                     velocity: Some(feedback.velocity.to_degrees() as f64),
                     torque: Some(feedback.torque as f64),
@@ -237,24 +236,16 @@ impl Actuator {
     }
 
     pub async fn update_feedback(&self, actuator_ids: Vec<u32>) -> Result<()> {
-        let mut last_request_guard = self.last_feedback_request.lock().await;
-
-        let duration_since_last_request = last_request_guard
-            .map(|last_request_instant| Instant::now().duration_since(last_request_instant))
-            .unwrap_or(Duration::from_millis(10 * self.feedback_debounce_ms));
-
-        if duration_since_last_request < Duration::from_millis(self.feedback_debounce_ms) {
-            return Ok(());
+        {
+            // Requests the current position for each actuator.
+            let supervisor_guard = self.supervisor.lock().await;
+            for id in actuator_ids {
+                supervisor_guard.request_feedback(id as u8).await?;
+            }
         }
 
-        let supervisor_guard = self.supervisor.lock().await;
-        for id in actuator_ids {
-            supervisor_guard.request_feedback(id as u8).await?;
-        }
-        *last_request_guard = Some(Instant::now());
-
-        drop(supervisor_guard);
-
+        // Waits for some fixed amount of time, to ensure that the feedback is
+        // sent back from the actuators.
         tokio::time::sleep(Duration::from_millis(FEEDBACK_DELAY_MS)).await;
 
         Ok(())
