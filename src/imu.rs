@@ -1,49 +1,28 @@
 use eyre::Result;
-use hiwonder::{ImuFrequency, IMU as HiwonderIMU};
-use std::sync::{Arc, RwLock};
-use tokio::task::JoinHandle;
+use imu::{HiwonderOutput, HiwonderReader, ImuFrequency, ImuReader};
+use std::time::Duration;
 use tracing::{error, info};
 
-#[derive(Debug, Clone)]
-pub struct ImuValues {
-    pub accel_x: f64,
-    pub accel_y: f64,
-    pub accel_z: f64,
-    pub gyro_x: f64,
-    pub gyro_y: f64,
-    pub gyro_z: f64,
-    pub roll: f64,
-    pub pitch: f64,
-    pub yaw: f64,
-    pub quaternion_x: f64,
-    pub quaternion_y: f64,
-    pub quaternion_z: f64,
-    pub quaternion_w: f64,
-}
-
-impl Default for ImuValues {
-    fn default() -> Self {
-        ImuValues {
-            accel_x: 0.0,
-            accel_y: 0.0,
-            accel_z: 0.0,
-            gyro_x: 0.0,
-            gyro_y: 0.0,
-            gyro_z: 0.0,
-            roll: 0.0,
-            pitch: 0.0,
-            yaw: 0.0,
-            quaternion_x: 0.0,
-            quaternion_y: 0.0,
-            quaternion_z: 0.0,
-            quaternion_w: 0.0,
-        }
-    }
-}
+const IMU_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct IMU {
-    data: Arc<RwLock<ImuValues>>,
-    _background_task: JoinHandle<()>, // Keep handle to prevent task from being dropped
+    imu_reader: HiwonderReader,
+}
+
+pub struct IMUData {
+    pub accel_x: f32,
+    pub accel_y: f32,
+    pub accel_z: f32,
+    pub gyro_x: f32,
+    pub gyro_y: f32,
+    pub gyro_z: f32,
+    pub quat_x: f32,
+    pub quat_y: f32,
+    pub quat_z: f32,
+    pub quat_w: f32,
+    pub euler_x: f32,
+    pub euler_y: f32,
+    pub euler_z: f32,
 }
 
 impl IMU {
@@ -52,22 +31,49 @@ impl IMU {
             return Err(eyre::eyre!("No interfaces provided"));
         }
 
-        // Initialize IMU hardware
-        let mut imu_hardware = None;
+        // Initialize IMU reader
+        let mut imu_reader = None;
         for interface in interfaces {
             info!(
                 "Attempting to initialize KBotIMU with interface: {} at {} baud",
                 interface, baud_rate
             );
 
-            match HiwonderIMU::new(interface, baud_rate) {
-                Ok(mut imu) => {
+            match HiwonderReader::new(interface, baud_rate, Duration::from_secs(1), true) {
+                Ok(imu) => {
                     info!("Successfully created IMU reader on {}", interface);
-                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz100) {
-                        error!("Failed to set IMU frequency: {}", e);
-                        continue;
+                    info!("Setting and verifying params...");
+
+                    if let Err(e) = imu.set_output_mode(
+                        HiwonderOutput::QUATERNION | HiwonderOutput::GYRO | HiwonderOutput::ACC,
+                        IMU_WRITE_TIMEOUT,
+                    ) {
+                        error!(
+                            "Failed to set output mode for {}: {}. Params might be default.",
+                            interface, e
+                        );
+                    } else {
+                        info!("Output mode set for {}", interface);
                     }
-                    imu_hardware = Some(imu);
+
+                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz200, IMU_WRITE_TIMEOUT) {
+                        error!(
+                            "Failed to set frequency for {}: {}. Params might be default.",
+                            interface, e
+                        );
+                    } else {
+                        info!("100Hz frequency set for {}", interface);
+                    }
+
+                    if let Err(e) = imu.set_bandwidth(42, IMU_WRITE_TIMEOUT) {
+                        error!(
+                            "Failed to set bandwidth for {}: {}. Params might be default.",
+                            interface, e
+                        );
+                    } else {
+                        info!("Bandwidth set for {}", interface);
+                    }
+                    imu_reader = Some(imu);
                     break;
                 }
                 Err(e) => {
@@ -77,61 +83,45 @@ impl IMU {
             }
         }
 
-        let mut imu_hardware = imu_hardware
+        let imu_reader = imu_reader
             .ok_or_else(|| eyre::eyre!("Failed to initialize IMU on any provided interface"))?;
 
-        let data = Arc::new(RwLock::new(ImuValues::default()));
-        let data_clone = data.clone();
-
-        // Spawn background task to continuously read IMU values
-        let background_task = tokio::spawn(async move {
-            let mut read_errors = 0;
-            loop {
-                match imu_hardware.read_data() {
-                    Ok(Some((acc, gyro, angle, quat))) => {
-                        if let Ok(mut imu_data) = data_clone.write() {
-                            imu_data.accel_x = acc[0] as f64;
-                            imu_data.accel_y = acc[1] as f64;
-                            imu_data.accel_z = acc[2] as f64;
-                            imu_data.gyro_x = gyro[0] as f64;
-                            imu_data.gyro_y = gyro[1] as f64;
-                            imu_data.gyro_z = gyro[2] as f64;
-                            imu_data.roll = angle[0] as f64;
-                            imu_data.pitch = angle[1] as f64;
-                            imu_data.yaw = angle[2] as f64;
-                            imu_data.quaternion_w = quat[0] as f64;
-                            imu_data.quaternion_x = quat[1] as f64;
-                            imu_data.quaternion_y = quat[2] as f64;
-                            imu_data.quaternion_z = quat[3] as f64;
-                        }
-                        read_errors = 0;
-                    }
-                    Ok(None) => {
-                        // No data available, not an error
-                    }
-                    Err(e) => {
-                        read_errors += 1;
-                        error!("Error reading from IMU: {} (count: {})", e, read_errors);
-                        if read_errors > 100 {
-                            error!("Too many IMU read errors, stopping background task");
-                            break;
-                        }
-                    }
-                }
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            }
-        });
-
-        Ok(Self {
-            data,
-            _background_task: background_task,
-        })
+        Ok(Self { imu_reader })
     }
 
-    pub fn get_values(&self) -> Result<ImuValues> {
-        self.data
-            .read()
-            .map_err(|e| eyre::eyre!("Failed to read IMU data: {}", e))
-            .map(|data| data.clone())
+    pub fn get_values(&self) -> Result<IMUData> {
+        let direct_read = self.imu_reader.get_data()?;
+        let accel = match direct_read.accelerometer {
+            Some(accel) => accel,
+            None => return Err(eyre::eyre!("Failed to read accelerometer")),
+        };
+        let gyro = match direct_read.gyroscope {
+            Some(gyro) => gyro,
+            None => return Err(eyre::eyre!("Failed to read gyroscope")),
+        };
+        let quat = match direct_read.quaternion {
+            Some(quat) => quat,
+            None => return Err(eyre::eyre!("Failed to read quaternion")),
+        };
+        let euler = match direct_read.euler {
+            Some(euler) => euler,
+            None => return Err(eyre::eyre!("Failed to read euler")),
+        };
+
+        Ok(IMUData {
+            accel_x: accel.x,
+            accel_y: accel.y,
+            accel_z: accel.z,
+            gyro_x: gyro.x,
+            gyro_y: gyro.y,
+            gyro_z: gyro.z,
+            quat_x: quat.x,
+            quat_y: quat.y,
+            quat_z: quat.z,
+            quat_w: quat.w,
+            euler_x: euler.x,
+            euler_y: euler.y,
+            euler_z: euler.z,
+        })
     }
 }
