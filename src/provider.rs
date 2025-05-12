@@ -188,6 +188,7 @@ impl ModelProvider for KBotProvider {
         let values = self
             .imu
             .get_values()
+            .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
         let accel_x = values.accel_x as f32;
         let accel_y = values.accel_y as f32;
@@ -201,6 +202,7 @@ impl ModelProvider for KBotProvider {
         let values = self
             .imu
             .get_values()
+            .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
         let gyro_x = values.gyro_x as f32;
         let gyro_y = values.gyro_y as f32;
