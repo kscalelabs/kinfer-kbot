@@ -9,17 +9,21 @@ use constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
 use imu::IMU;
 use kinfer::{ModelError, ModelProvider};
 use ndarray::{Array, IxDyn};
+use std::fs::File;
+use std::path::Path;
 use std::time::Duration;
 use tracing_subscriber::FmtSubscriber;
 
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
-    dry_run: bool,
 }
 
 impl KBotProvider {
-    pub async fn new(dry_run: bool) -> Result<Self, ModelError> {
+    pub async fn new<P: AsRef<Path>>(
+        torque_enabled: bool,
+        torque_scale: f32,
+    ) -> Result<Self, ModelError> {
         let kbot_actuators = actuators::Actuator::create_kbot_actuators();
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
 
@@ -47,8 +51,8 @@ impl KBotProvider {
                         actuator_id: *id as u32,
                         kp: Some(kp),
                         kd: Some(kd),
-                        max_torque: Some(max_torque),
-                        torque_enabled: Some(!dry_run),
+                        max_torque: Some(max_torque * torque_scale),
+                        torque_enabled: Some(torque_enabled),
                         zero_position: None,
                         new_actuator_id: None,
                         max_velocity: None,
@@ -63,11 +67,7 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self {
-            actuators,
-            imu,
-            dry_run,
-        })
+        Ok(Self { actuators, imu })
     }
 
     fn get_actuator_ids(&self, joint_names: &[String]) -> Result<Vec<u32>, ModelError> {
@@ -220,10 +220,6 @@ impl ModelProvider for KBotProvider {
         action: Array<f32, IxDyn>,
     ) -> Result<(), ModelError> {
         assert_eq!(joint_names.len(), action.len());
-
-        if self.dry_run {
-            return Ok(());
-        }
 
         let commands: Vec<ActuatorCommand> = joint_names
             .iter()

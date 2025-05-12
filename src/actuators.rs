@@ -6,7 +6,6 @@ use robstride::{
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ActuatorCommand {
@@ -202,7 +201,7 @@ impl Actuator {
         // Reads the latest feedback from each actuator.
         let supervisor = self.supervisor.lock().await;
         for id in actuator_ids {
-            if let Ok(Some((feedback, ts))) = supervisor.get_feedback(id as u8).await {
+            if let Ok(Some((feedback, _))) = supervisor.get_feedback(id as u8).await {
                 responses.push(ActuatorState {
                     actuator_id: id as u32,
                     online: true,

@@ -15,15 +15,18 @@ struct Args {
     /// Duration of the model step in milliseconds
     #[arg(long, default_value_t = 20)]
     dt: u64,
-    /// Dry run
-    #[arg(long, default_value = "false")]
-    dry_run: bool,
     /// Slowdown factor
     #[arg(long, default_value_t = 1)]
     slowdown_factor: i32,
     /// Magnitude factor
     #[arg(long, default_value_t = 1.0)]
     magnitude_factor: f32,
+    /// Torque enabled
+    #[arg(long, default_value = "false")]
+    torque_enabled: bool,
+    /// Torque scale
+    #[arg(long, default_value_t = 1.0)]
+    torque_scale: f32,
 }
 
 #[tokio::main]
@@ -33,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let model_path = Path::new(&args.model_path);
 
-    let provider = Arc::new(KBotProvider::new(args.dry_run).await?);
+    let provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
     let model_runner = ModelRunner::new(model_path, provider).await?;
 
     // Initialize and start the model runtime.
