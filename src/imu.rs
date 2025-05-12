@@ -99,18 +99,22 @@ impl IMU {
             Some(accel) => accel,
             None => return Err(eyre::eyre!("Failed to read accelerometer")),
         };
+        println!("3");
         let gyro = match direct_read.gyroscope {
             Some(gyro) => gyro,
             None => return Err(eyre::eyre!("Failed to read gyroscope")),
         };
+        println!("4");
         let quat = match direct_read.quaternion {
             Some(quat) => quat,
             None => return Err(eyre::eyre!("Failed to read quaternion")),
         };
+        println!("5");
         let euler = match direct_read.euler {
             Some(euler) => euler,
             None => return Err(eyre::eyre!("Failed to read euler")),
         };
+        println!("6");
 
         Ok(IMUData {
             accel_x: accel.x,
