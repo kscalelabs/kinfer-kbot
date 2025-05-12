@@ -84,19 +84,16 @@ impl ModelRuntime {
             command_interval.tick().await;
 
             while running.load(Ordering::Relaxed) {
-                println!("step 0");
                 let (output, next_carry) = model_runner
                     .step(carry)
                     .await
                     .map_err(|e| ModelError::Provider(e.to_string()))?;
-                println!("step 1");
                 carry = next_carry;
 
                 for i in 1..(slowdown_factor + 1) {
                     if !running.load(Ordering::Relaxed) {
                         break;
                     }
-                    println!("step 2");
                     let t = i as f32 / slowdown_factor as f32;
                     let interp_joint_positions = &joint_positions * (1.0 - t) + &output * t;
                     model_runner
@@ -107,13 +104,9 @@ impl ModelRuntime {
                     // Trigger an actuator read N milliseconds before the next
                     // command tick, to make sure the observations are as fresh
                     // as possible.
-                    println!("int 1");
                     read_interval.tick().await;
-                    println!("int 2");
                     model_provider.trigger_actuator_read().await?;
-                    println!("int 3");
                     command_interval.tick().await;
-                    println!("int 4");
                 }
 
                 joint_positions = output;
