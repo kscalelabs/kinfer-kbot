@@ -122,6 +122,8 @@ impl ModelProvider for KBotProvider {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        println!("joint_angles: {:?}", joint_angles);
+
         Ok(Array::from_shape_vec((joint_names.len(),), joint_angles)
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
