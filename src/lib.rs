@@ -29,7 +29,6 @@ impl KBotProvider {
                 vec!["can0", "can1", "can2", "can3", "can4"],
                 Duration::from_millis(100),
                 &kbot_actuators,
-                10, // feedback_debounce_ms
             )
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?;
