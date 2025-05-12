@@ -137,17 +137,11 @@ impl Actuator {
             let result = supervisor
                 .command(
                     motor_id,
-                    command
-                        .position
-                        .map(|p| p.to_radians() as f32)
-                        .ok_or(eyre::eyre!(
-                            "No position specified for actuator {}",
-                            command.actuator_id
-                        ))?,
-                    command
-                        .velocity
-                        .map(|v| v.to_radians() as f32)
-                        .unwrap_or(0.0), // We assume default target velocity is 0 if not specified
+                    command.position.map(|p| p as f32).ok_or(eyre::eyre!(
+                        "No position specified for actuator {}",
+                        command.actuator_id
+                    ))?,
+                    command.velocity.map(|v| v as f32).unwrap_or(0.0), // We assume default target velocity is 0 if not specified
                     command.torque.map(|t| t as f32).unwrap_or(0.0), // We assume default target torque is 0 if not specified
                 )
                 .await;

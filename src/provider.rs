@@ -5,7 +5,7 @@ use ::async_trait::async_trait;
 use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
-use ::std::time::Duration;
+use ::std::time::{Duration, Instant};
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -254,6 +254,8 @@ impl ModelProvider for KBotProvider {
             .command_actuators(commands)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
+
+        println!("took action {:?} at time {:?}", action, Instant::now());
 
         Ok(())
     }
