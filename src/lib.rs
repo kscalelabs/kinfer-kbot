@@ -77,6 +77,11 @@ impl ModelProvider for KBotProvider {
         &self,
         joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        // TODO: Instead of just polling the position from the supervisor,
+        // we should trigger the feedback command, wait for some amount of time,
+        // and then read the position. We need to make sure that we only
+        // trigger the feedback command once for both `get_joint_angles` and
+        // `get_joint_angular_velocities` on each call.`
         let actuator_ids = joint_names
             .iter()
             .map(|name| {
