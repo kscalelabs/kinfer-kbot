@@ -91,7 +91,7 @@ impl IMU {
         Ok(Self { imu_reader, read_lock: Mutex::new(()) })
     }
 
-    pub fn get_values(&self) -> Result<IMUData> {
+    pub async fn get_values(&self) -> Result<IMUData> {
         let _guard = self.read_lock.lock().await;
 
         let direct_read = self.imu_reader.get_data()?;

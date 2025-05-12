@@ -163,6 +163,7 @@ impl ModelProvider for KBotProvider {
         let values = self
             .imu
             .get_values()
+            .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
         let projected_gravity = Quaternion {
             x: values.quat_x,
