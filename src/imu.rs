@@ -42,37 +42,39 @@ impl IMU {
             match HiwonderReader::new(interface, baud_rate, Duration::from_secs(1), true) {
                 Ok(imu) => {
                     info!("Successfully created IMU reader on {}", interface);
-                    info!("Setting and verifying params...");
 
-                    if let Err(e) = imu.set_output_mode(
-                        HiwonderOutput::QUATERNION | HiwonderOutput::GYRO | HiwonderOutput::ACC,
-                        IMU_WRITE_TIMEOUT,
-                    ) {
-                        error!(
-                            "Failed to set output mode for {}: {}. Params might be default.",
-                            interface, e
-                        );
-                    } else {
-                        info!("Output mode set for {}", interface);
-                    }
+                    // info!("Setting and verifying params...");
 
-                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz200, IMU_WRITE_TIMEOUT) {
-                        error!(
-                            "Failed to set frequency for {}: {}. Params might be default.",
-                            interface, e
-                        );
-                    } else {
-                        info!("200Hz frequency set for {}", interface);
-                    }
+                    // if let Err(e) = imu.set_output_mode(
+                    //     HiwonderOutput::QUATERNION | HiwonderOutput::GYRO | HiwonderOutput::ACC,
+                    //     IMU_WRITE_TIMEOUT,
+                    // ) {
+                    //     error!(
+                    //         "Failed to set output mode for {}: {}. Params might be default.",
+                    //         interface, e
+                    //     );
+                    // } else {
+                    //     info!("Output mode set for {}", interface);
+                    // }
 
-                    if let Err(e) = imu.set_bandwidth(42, IMU_WRITE_TIMEOUT) {
-                        error!(
-                            "Failed to set bandwidth for {}: {}. Params might be default.",
-                            interface, e
-                        );
-                    } else {
-                        info!("Bandwidth set for {}", interface);
-                    }
+                    // if let Err(e) = imu.set_frequency(ImuFrequency::Hz200, IMU_WRITE_TIMEOUT) {
+                    //     error!(
+                    //         "Failed to set frequency for {}: {}. Params might be default.",
+                    //         interface, e
+                    //     );
+                    // } else {
+                    //     info!("200Hz frequency set for {}", interface);
+                    // }
+
+                    // if let Err(e) = imu.set_bandwidth(42, IMU_WRITE_TIMEOUT) {
+                    //     error!(
+                    //         "Failed to set bandwidth for {}: {}. Params might be default.",
+                    //         interface, e
+                    //     );
+                    // } else {
+                    //     info!("Bandwidth set for {}", interface);
+                    // }
+
                     imu_reader = Some(imu);
                     break;
                 }
@@ -90,7 +92,9 @@ impl IMU {
     }
 
     pub async fn get_values(&self) -> Result<IMUData> {
+        println!("1");
         let direct_read = self.imu_reader.get_data()?;
+        println!("2");
         let accel = match direct_read.accelerometer {
             Some(accel) => accel,
             None => return Err(eyre::eyre!("Failed to read accelerometer")),
