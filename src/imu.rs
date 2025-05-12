@@ -1,7 +1,9 @@
 use eyre::Result;
-use imu::{HiwonderReader, ImuFrequency, ImuReader};
+use imu::{HiwonderOutput, HiwonderReader, ImuFrequency, ImuReader};
 use std::time::Duration;
 use tracing::{error, info};
+
+const IMU_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct IMU {
     imu_reader: HiwonderReader,
@@ -40,9 +42,36 @@ impl IMU {
             match HiwonderReader::new(interface, baud_rate, Duration::from_secs(1), true) {
                 Ok(imu) => {
                     info!("Successfully created IMU reader on {}", interface);
-                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz100, Duration::from_secs(1)) {
-                        error!("Failed to set IMU frequency: {}", e);
-                        continue;
+                    info!("Setting and verifying params...");
+
+                    if let Err(e) = imu.set_output_mode(
+                        HiwonderOutput::QUATERNION | HiwonderOutput::GYRO | HiwonderOutput::ACC,
+                        IMU_WRITE_TIMEOUT,
+                    ) {
+                        error!(
+                            "Failed to set output mode for {}: {}. Params might be default.",
+                            interface, e
+                        );
+                    } else {
+                        info!("Output mode set for {}", interface);
+                    }
+
+                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz100, IMU_WRITE_TIMEOUT) {
+                        error!(
+                            "Failed to set frequency for {}: {}. Params might be default.",
+                            interface, e
+                        );
+                    } else {
+                        info!("100Hz frequency set for {}", interface);
+                    }
+
+                    if let Err(e) = imu.set_bandwidth(42, IMU_WRITE_TIMEOUT) {
+                        error!(
+                            "Failed to set bandwidth for {}: {}. Params might be default.",
+                            interface, e
+                        );
+                    } else {
+                        info!("Bandwidth set for {}", interface);
                     }
                     imu_reader = Some(imu);
                     break;
