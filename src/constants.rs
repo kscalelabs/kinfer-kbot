@@ -50,3 +50,26 @@ pub const ACTUATOR_KP_KD: [(usize, f32, f32, f32); 20] = [
     (44, 150.0, 8.654, TAU_04),  // right_knee_04
     (45, 40.0, 0.99, TAU_02),    // right_ankle_02
 ];
+
+pub const HOME_POSITION: [(usize, f32); 20] = [
+    (21, 0.0),
+    (22, (-10.0 as f32).to_radians()),
+    (23, 0.0),
+    (24, (15.0 as f32).to_radians()),
+    (25, 0.0),
+    (11, 0.0),
+    (12, (10.0 as f32).to_radians()),
+    (13, 0.0),
+    (14, (-15.0 as f32).to_radians()),
+    (15, 0.0),
+    (41, (-25.0 as f32).to_radians()),
+    (42, (-5.0 as f32).to_radians()),
+    (43, 0.0),
+    (44, (-50.0 as f32).to_radians()),
+    (45, (25.0 as f32).to_radians()),
+    (31, (25.0 as f32).to_radians()),
+    (32, (5.0 as f32).to_radians()),
+    (33, 0.0),
+    (34, (50.0 as f32).to_radians()),
+    (35, (-25.0 as f32).to_radians()),
+];

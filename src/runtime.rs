@@ -5,6 +5,8 @@ use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 
+use crate::actuators::ActuatorCommand;
+use crate::constants::HOME_POSITION;
 use crate::provider::KBotProvider;
 
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -72,9 +74,16 @@ impl ModelRuntime {
                 .await
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
 
+            // Moves to home position.
+            model_provider.move_to_home().await?;
+            for i in 5..1 {
+                println!("Starting in {} seconds...", i);
+                sleep(Duration::from_secs(1)).await;
+            }
+
             // Wait for the first tick, since it happens immediately.
-            let mut command_interval = interval(dt);
             let mut read_interval = interval(dt);
+            let mut command_interval = interval(dt);
 
             // Start the two intervals N milliseconds apart. The first tick is
             // always instantaneous and represents the start of the interval

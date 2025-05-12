@@ -1,11 +1,12 @@
-use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
-use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
-use crate::imu::IMU;
 use ::async_trait::async_trait;
 use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
 use ::std::time::{Duration, Instant};
+
+use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
+use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
+use crate::imu::IMU;
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -90,6 +91,24 @@ impl KBotProvider {
             .collect::<Vec<u32>>();
         self.actuators
             .trigger_actuator_read(actuator_ids)
+            .await
+            .map_err(|e| ModelError::Provider(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn move_to_home(&self) -> Result<(), ModelError> {
+        let home_position = HOME_POSITION;
+        let mut commands = vec![];
+        for (id, position) in home_position {
+            commands.push(ActuatorCommand {
+                actuator_id: id as u32,
+                position: Some(position as f64),
+                velocity: None,
+                torque: None,
+            });
+        }
+        self.actuators
+            .command_actuators(commands)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
         Ok(())
