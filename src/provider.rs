@@ -1,16 +1,17 @@
+use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
+use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
+use crate::imu::IMU;
 use ::async_trait::async_trait;
 use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
 use ::std::time::Duration;
-
-use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
-use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
-use crate::imu::IMU;
+use ::tokio::sync::Mutex;
 
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
+    imu_read_lock: Mutex<()>,
 }
 
 impl KBotProvider {
@@ -58,7 +59,11 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self { actuators, imu })
+        Ok(Self {
+            actuators,
+            imu,
+            imu_read_lock: Mutex::new(()),
+        })
     }
 
     fn get_actuator_ids(&self, joint_names: &[String]) -> Result<Vec<u32>, ModelError> {
@@ -160,6 +165,7 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_projected_gravity(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let _guard = self.imu_read_lock.lock().await;
         let values = self
             .imu
             .get_values()
@@ -185,6 +191,7 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let _guard = self.imu_read_lock.lock().await;
         let values = self
             .imu
             .get_values()
@@ -199,6 +206,7 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_gyroscope(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let _guard = self.imu_read_lock.lock().await;
         let values = self
             .imu
             .get_values()
