@@ -1,5 +1,6 @@
 use ::eyre::Result;
 use ::imu::{HiwonderOutput, HiwonderReader, ImuFrequency, ImuReader};
+use ::tokio::sync::Mutex;
 use ::std::time::Duration;
 use ::tracing::{error, info};
 
@@ -7,6 +8,7 @@ const IMU_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct IMU {
     imu_reader: HiwonderReader,
+    read_lock: Mutex<()>,
 }
 
 pub struct IMUData {
@@ -86,10 +88,12 @@ impl IMU {
         let imu_reader = imu_reader
             .ok_or_else(|| eyre::eyre!("Failed to initialize IMU on any provided interface"))?;
 
-        Ok(Self { imu_reader })
+        Ok(Self { imu_reader, read_lock: Mutex::new(()) })
     }
 
     pub fn get_values(&self) -> Result<IMUData> {
+        let _guard = self.read_lock.lock().await;
+
         let direct_read = self.imu_reader.get_data()?;
         let accel = match direct_read.accelerometer {
             Some(accel) => accel,
