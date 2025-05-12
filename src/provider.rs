@@ -6,7 +6,6 @@ use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
 use ::std::time::Duration;
-use ::tokio::sync::Mutex;
 
 pub struct KBotProvider {
     actuators: Actuator,
