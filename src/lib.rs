@@ -69,20 +69,9 @@ impl KBotProvider {
             dry_run,
         })
     }
-}
 
-#[async_trait]
-impl ModelProvider for KBotProvider {
-    async fn get_joint_angles(
-        &self,
-        joint_names: &[String],
-    ) -> Result<Array<f32, IxDyn>, ModelError> {
-        // TODO: Instead of just polling the position from the supervisor,
-        // we should trigger the feedback command, wait for some amount of time,
-        // and then read the position. We need to make sure that we only
-        // trigger the feedback command once for both `get_joint_angles` and
-        // `get_joint_angular_velocities` on each call.`
-        let actuator_ids = joint_names
+    fn get_actuator_ids(&self, joint_names: &[String]) -> Result<Vec<u32>, ModelError> {
+        joint_names
             .iter()
             .map(|name| {
                 ACTUATOR_NAME_TO_ID
@@ -91,12 +80,28 @@ impl ModelProvider for KBotProvider {
                     .map(|(_, id)| *id)
                     .ok_or_else(|| ModelError::Provider(format!("Joint name not found: {}", name)))
             })
-            .collect::<Result<Vec<u32>, _>>()?;
-        let actuator_state = self
-            .actuators
+            .collect::<Result<Vec<u32>, _>>()
+    }
+
+    async fn get_actuator_state(
+        &self,
+        actuator_ids: &[u32],
+    ) -> Result<Vec<ActuatorState>, ModelError> {
+        self.actuators
             .get_actuators_state(actuator_ids)
             .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
+            .map_err(|e| ModelError::Provider(e.to_string()))
+    }
+}
+
+#[async_trait]
+impl ModelProvider for KBotProvider {
+    async fn get_joint_angles(
+        &self,
+        joint_names: &[String],
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let actuator_ids = self.get_actuator_ids(joint_names)?;
+        let actuator_state = self.get_actuator_state(&actuator_ids).await?;
 
         let joint_angles = actuator_state
             .iter()
@@ -122,30 +127,17 @@ impl ModelProvider for KBotProvider {
 
     async fn get_joint_angular_velocities(
         &self,
-        _joint_names: &[String],
+        joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
-        let actuator_ids: Vec<u32> = _joint_names
-            .iter()
-            .map(|name| {
-                ACTUATOR_NAME_TO_ID
-                    .iter()
-                    .find(|(const_name, _)| *name == *const_name)
-                    .map(|(_, id)| *id)
-                    .ok_or_else(|| ModelError::Provider(format!("Joint name not found: {}", name)))
-            })
-            .collect::<Result<Vec<u32>, _>>()?;
+        let actuator_ids = self.get_actuator_ids(joint_names)?;
+        let actuator_state = self.get_actuator_state(&actuator_ids).await?;
 
-        let actuator_state = self
-            .actuators
-            .get_actuators_state(actuator_ids)
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
         let joint_angular_velocities: Vec<f32> = actuator_state
             .iter()
             .enumerate()
             .map(|(idx, state)| {
                 state.velocity.map(|v| v as f32).ok_or_else(|| {
-                    let joint_name_for_error = _joint_names.get(idx).map_or_else(
+                    let joint_name_for_error = joint_names.get(idx).map_or_else(
                         || format!("<unknown joint at index {}>", idx),
                         |s| s.to_string(),
                     );
@@ -158,7 +150,7 @@ impl ModelProvider for KBotProvider {
             .collect::<Result<Vec<f32>, ModelError>>()?;
 
         Ok(
-            Array::from_shape_vec((_joint_names.len(),), joint_angular_velocities)
+            Array::from_shape_vec((joint_names.len(),), joint_angular_velocities)
                 .map_err(|e| ModelError::Provider(e.to_string()))?
                 .into_dyn(),
         )
@@ -189,11 +181,6 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        // TODO: Right now we are polling the IMU to get the accelerometer
-        // values. Instead, we should manually trigger an IMU read, then read
-        // the accelerometer values. We need to make sure that we only
-        // trigger the accelerometer read once for `get_accelerometer`,
-        // `get_gyroscope` and `get_projected_gravity` on each call.
         let values = self
             .imu
             .get_values()

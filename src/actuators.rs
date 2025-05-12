@@ -8,8 +8,6 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-const FEEDBACK_DELAY_MS: u64 = 3;
-
 #[derive(Clone, Copy, Debug)]
 pub struct ActuatorCommand {
     pub actuator_id: u32,
@@ -125,10 +123,6 @@ impl Actuator {
             supervisor: Arc::new(Mutex::new(supervisor)),
         };
 
-        actuator
-            .update_feedback(actuators_config.iter().map(|(id, _)| *id as u32).collect())
-            .await?;
-
         Ok(actuator)
     }
 
@@ -205,9 +199,6 @@ impl Actuator {
     pub async fn get_actuators_state(&self, actuator_ids: Vec<u32>) -> Result<Vec<ActuatorState>> {
         let mut responses = vec![];
 
-        // Triggers a read, then waits for a fixed amount of time.
-        self.update_feedback(actuator_ids.clone()).await?;
-
         // Reads the latest feedback from each actuator.
         let supervisor = self.supervisor.lock().await;
         for id in actuator_ids {
@@ -233,22 +224,6 @@ impl Actuator {
             }
         }
         Ok(responses)
-    }
-
-    pub async fn update_feedback(&self, actuator_ids: Vec<u32>) -> Result<()> {
-        {
-            // Requests the current position for each actuator.
-            let supervisor_guard = self.supervisor.lock().await;
-            for id in actuator_ids {
-                supervisor_guard.request_feedback(id as u8).await?;
-            }
-        }
-
-        // Waits for some fixed amount of time, to ensure that the feedback is
-        // sent back from the actuators.
-        tokio::time::sleep(Duration::from_millis(FEEDBACK_DELAY_MS)).await;
-
-        Ok(())
     }
 
     pub fn create_kbot_actuators() -> Vec<(u8, ActuatorConfiguration)> {
