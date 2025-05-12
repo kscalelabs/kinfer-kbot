@@ -102,7 +102,9 @@ impl ModelRuntime {
             info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
                 let uuid = uuid::Uuid::new_v4();
+                let uuid_main_control_loop = uuid::Uuid::new_v4();
                 trace!("runtime::model_runner_step::START uuid={}", uuid);
+                trace!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
 
                 let (output, next_carry) = model_runner
                     .step(carry)
@@ -131,6 +133,7 @@ impl ModelRuntime {
                 }
 
                 joint_positions = output;
+                trace!("runtime::main_control_loop::END uuid={}", uuid_main_control_loop);
             }
             info!("Exiting main control loop");
             Ok::<(), ModelError>(())
