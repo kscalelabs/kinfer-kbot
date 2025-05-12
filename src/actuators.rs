@@ -216,8 +216,8 @@ impl Actuator {
                 responses.push(ActuatorState {
                     actuator_id: id as u32,
                     online: true,
-                    position: Some(feedback.angle.to_degrees() as f64),
-                    velocity: Some(feedback.velocity.to_degrees() as f64),
+                    position: Some(feedback.angle as f64),
+                    velocity: Some(feedback.velocity as f64),
                     torque: Some(feedback.torque as f64),
                     temperature: Some(feedback.temperature as f64),
                 });
