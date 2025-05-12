@@ -51,8 +51,8 @@ impl KBotProvider {
                         torque_enabled: Some(!dry_run),
                         zero_position: None,
                         new_actuator_id: None,
-                        max_velocity: Some(5.0),
-                        max_current: Some(10.0),
+                        max_velocity: None,
+                        max_current: None,
                     })
                     .await
                 {
