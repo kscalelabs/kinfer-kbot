@@ -3,7 +3,7 @@ pub mod constants;
 pub mod imu;
 
 use ::imu::{Quaternion, Vector3};
-use actuators::{Actuator, ActuatorCommand};
+use actuators::{Actuator, ActuatorCommand, ActuatorState};
 use async_trait::async_trait;
 use constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
 use imu::IMU;
@@ -88,7 +88,7 @@ impl KBotProvider {
         actuator_ids: &[u32],
     ) -> Result<Vec<ActuatorState>, ModelError> {
         self.actuators
-            .get_actuators_state(actuator_ids)
+            .get_actuators_state(actuator_ids.to_vec())
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))
     }
@@ -110,7 +110,7 @@ impl ModelProvider for KBotProvider {
                 state.position.map(|p| p as f32).ok_or_else(|| {
                     let joint_name_for_error = joint_names.get(idx).map_or_else(
                         || format!("<unknown joint at index {}>", idx),
-                        |s| s.to_string(),
+                        |s: &String| s.to_string(),
                     );
                     ModelError::Provider(format!(
                         "Position not available for joint ID {} (name: {})",
@@ -139,7 +139,7 @@ impl ModelProvider for KBotProvider {
                 state.velocity.map(|v| v as f32).ok_or_else(|| {
                     let joint_name_for_error = joint_names.get(idx).map_or_else(
                         || format!("<unknown joint at index {}>", idx),
-                        |s| s.to_string(),
+                        |s: &String| s.to_string(),
                     );
                     ModelError::Provider(format!(
                         "Velocity data not available (is None) for joint ID {} (name: {})",

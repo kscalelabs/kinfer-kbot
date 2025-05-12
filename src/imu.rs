@@ -56,7 +56,7 @@ impl IMU {
                         info!("Output mode set for {}", interface);
                     }
 
-                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz100, IMU_WRITE_TIMEOUT) {
+                    if let Err(e) = imu.set_frequency(ImuFrequency::Hz200, IMU_WRITE_TIMEOUT) {
                         error!(
                             "Failed to set frequency for {}: {}. Params might be default.",
                             interface, e
