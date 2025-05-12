@@ -4,9 +4,8 @@ use ::std::sync::Arc;
 use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
+use tracing::{info, trace};
 
-use crate::actuators::ActuatorCommand;
-use crate::constants::HOME_POSITION;
 use crate::provider::KBotProvider;
 
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -65,6 +64,8 @@ impl ModelRuntime {
         running.store(true, Ordering::Relaxed);
 
         runtime.spawn(async move {
+            info!("Starting model runtime");
+
             // Moves to home position.
             model_provider.move_to_home().await?;
 
@@ -98,7 +99,11 @@ impl ModelRuntime {
             sleep(dt - TRIGGER_READ_BEFORE).await;
             command_interval.tick().await;
 
+            info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
+                let uuid = uuid::Uuid::new_v4();
+                trace!("runtime::main_control_loop::START uuid={}", uuid);
+
                 let (output, next_carry) = model_runner
                     .step(carry)
                     .await
@@ -125,7 +130,9 @@ impl ModelRuntime {
                 }
 
                 joint_positions = output;
+                trace!("runtime::main_control_loop::END uuid={}", uuid);
             }
+            info!("Exiting main control loop");
             Ok::<(), ModelError>(())
         });
 
@@ -134,6 +141,7 @@ impl ModelRuntime {
     }
 
     pub fn stop(&mut self) {
+        info!("Stopping model runtime");
         self.running.store(false, Ordering::Relaxed);
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown_background();
