@@ -67,6 +67,12 @@ impl ModelRuntime {
         runtime.spawn(async move {
             // Moves to home position.
             model_provider.move_to_home().await?;
+
+            // Wait for user to press enter
+            println!("Press enter to start...");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
+
             for i in 1..5 {
                 println!("Starting in {} seconds...", 5 - i);
                 sleep(Duration::from_secs(1)).await;
