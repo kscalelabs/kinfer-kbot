@@ -1,10 +1,11 @@
-use clap::Parser;
-use kinfer::model::ModelRunner;
-use kinfer::runtime::ModelRuntime;
+use ::clap::Parser;
+use ::kinfer::model::ModelRunner;
+use ::std::path::Path;
+use ::std::sync::Arc;
+
 use kinfer_kbot::initialize_logging;
-use kinfer_kbot::KBotProvider;
-use std::path::Path;
-use std::sync::Arc;
+use kinfer_kbot::provider::KBotProvider;
+use kinfer_kbot::runtime::ModelRuntime;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -36,11 +37,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let model_path = Path::new(&args.model_path);
 
-    let provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
-    let model_runner = ModelRunner::new(model_path, provider).await?;
+    let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
+    let model_runner = ModelRunner::new(model_path, model_provider.clone()).await?;
 
     // Initialize and start the model runtime.
-    let mut model_runtime = ModelRuntime::new(Arc::new(model_runner), args.dt);
+    let mut model_runtime = ModelRuntime::new(model_provider, Arc::new(model_runner), args.dt);
     model_runtime.set_slowdown_factor(args.slowdown_factor);
     model_runtime.set_magnitude_factor(args.magnitude_factor);
     model_runtime.start()?;
