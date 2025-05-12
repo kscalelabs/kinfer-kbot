@@ -171,7 +171,7 @@ impl ModelProvider for KBotProvider {
             z: values.quat_z,
             w: values.quat_w,
         }
-        .rotate(Vector3::new(0.0, 0.0, -9.81));
+        .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
         Ok(Array::from_shape_vec(
             (3,),
             vec![
