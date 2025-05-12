@@ -20,9 +20,6 @@ pub struct IMUData {
     pub quat_y: f32,
     pub quat_z: f32,
     pub quat_w: f32,
-    pub euler_x: f32,
-    pub euler_y: f32,
-    pub euler_z: f32,
 }
 
 impl IMU {
@@ -92,29 +89,19 @@ impl IMU {
     }
 
     pub async fn get_values(&self) -> Result<IMUData> {
-        println!("1");
         let direct_read = self.imu_reader.get_data()?;
-        println!("2");
         let accel = match direct_read.accelerometer {
             Some(accel) => accel,
             None => return Err(eyre::eyre!("Failed to read accelerometer")),
         };
-        println!("3");
         let gyro = match direct_read.gyroscope {
             Some(gyro) => gyro,
             None => return Err(eyre::eyre!("Failed to read gyroscope")),
         };
-        println!("4");
         let quat = match direct_read.quaternion {
             Some(quat) => quat,
             None => return Err(eyre::eyre!("Failed to read quaternion")),
         };
-        println!("5");
-        let euler = match direct_read.euler {
-            Some(euler) => euler,
-            None => return Err(eyre::eyre!("Failed to read euler")),
-        };
-        println!("6");
 
         Ok(IMUData {
             accel_x: accel.x,
@@ -127,9 +114,6 @@ impl IMU {
             quat_y: quat.y,
             quat_z: quat.z,
             quat_w: quat.w,
-            euler_x: euler.x,
-            euler_y: euler.y,
-            euler_z: euler.z,
         })
     }
 }
