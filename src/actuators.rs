@@ -140,7 +140,10 @@ impl Actuator {
                     command
                         .position
                         .map(|p| p.to_radians() as f32)
-                        .unwrap_or(0.0), // We assume default target position is 0 if not specified
+                        .ok_or(eyre::eyre!(
+                            "No position specified for actuator {}",
+                            command.actuator_id
+                        ))?,
                     command
                         .velocity
                         .map(|v| v.to_radians() as f32)
@@ -193,6 +196,14 @@ impl Actuator {
             success: result.is_ok(),
             error: result.err().map(|e| e.to_string()),
         })
+    }
+
+    pub async fn trigger_actuator_read(&self, actuator_ids: Vec<u32>) -> Result<()> {
+        let supervisor = self.supervisor.lock().await;
+        for id in actuator_ids {
+            supervisor.request_feedback(id as u8).await?;
+        }
+        Ok(())
     }
 
     pub async fn get_actuators_state(&self, actuator_ids: Vec<u32>) -> Result<Vec<ActuatorState>> {
