@@ -1,10 +1,11 @@
-use clap::Parser;
-use kinfer::model::ModelRunner;
-use kinfer::runtime::ModelRuntime;
+use ::clap::Parser;
+use ::kinfer::model::ModelRunner;
+use ::std::path::Path;
+use ::std::sync::Arc;
+
 use kinfer_kbot::initialize_logging;
+use kinfer_kbot::runtime::ModelRuntime;
 use kinfer_kbot::KBotProvider;
-use std::path::Path;
-use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

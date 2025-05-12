@@ -1,16 +1,18 @@
+use ::async_trait::async_trait;
+use ::imu::{Quaternion, Vector3};
+use ::kinfer::{ModelError, ModelProvider};
+use ::ndarray::{Array, IxDyn};
+use ::std::time::Duration;
+use ::tracing_subscriber::FmtSubscriber;
+
 pub mod actuators;
 pub mod constants;
 pub mod imu;
+pub mod runtime;
 
-use ::imu::{Quaternion, Vector3};
 use actuators::{Actuator, ActuatorCommand, ActuatorState};
-use async_trait::async_trait;
 use constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID};
 use imu::IMU;
-use kinfer::{ModelError, ModelProvider};
-use ndarray::{Array, IxDyn};
-use std::time::Duration;
-use tracing_subscriber::FmtSubscriber;
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -86,6 +88,11 @@ impl KBotProvider {
             .get_actuators_state(actuator_ids.to_vec())
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))
+    }
+
+    async fn trigger_actuator_read(&self) -> Result<(), ModelError> {
+        let actuator_ids = self.get_actuator_ids(joint_names)?;
+        let actuator_state = self.get_actuator_state(&actuator_ids).await?;
     }
 }
 
