@@ -62,7 +62,7 @@ impl IMU {
                             interface, e
                         );
                     } else {
-                        info!("100Hz frequency set for {}", interface);
+                        info!("200Hz frequency set for {}", interface);
                     }
 
                     if let Err(e) = imu.set_bandwidth(42, IMU_WRITE_TIMEOUT) {

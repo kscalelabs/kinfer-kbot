@@ -108,8 +108,11 @@ impl ModelProvider for KBotProvider {
         &self,
         joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        println!("pre 1");
         let actuator_ids = self.get_actuator_ids(joint_names)?;
         let actuator_state = self.get_actuator_state(&actuator_ids).await?;
+
+        println!("get_joint_angles");
 
         let joint_angles = actuator_state
             .iter()
@@ -137,8 +140,11 @@ impl ModelProvider for KBotProvider {
         &self,
         joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        println!("pre 2");
         let actuator_ids = self.get_actuator_ids(joint_names)?;
         let actuator_state = self.get_actuator_state(&actuator_ids).await?;
+
+        println!("get_joint_anglular_velocities");
 
         let joint_angular_velocities: Vec<f32> = actuator_state
             .iter()
@@ -166,6 +172,7 @@ impl ModelProvider for KBotProvider {
 
     async fn get_projected_gravity(&self) -> Result<Array<f32, IxDyn>, ModelError> {
         let _guard = self.imu_read_lock.lock().await;
+        println!("proj 1");
         let values = self
             .imu
             .get_values()
@@ -178,6 +185,7 @@ impl ModelProvider for KBotProvider {
             w: values.quat_w,
         }
         .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
+        println!("proj 2");
         Ok(Array::from_shape_vec(
             (3,),
             vec![
@@ -192,6 +200,7 @@ impl ModelProvider for KBotProvider {
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
         let _guard = self.imu_read_lock.lock().await;
+        println!("acc 1");
         let values = self
             .imu
             .get_values()
@@ -200,6 +209,7 @@ impl ModelProvider for KBotProvider {
         let accel_x = values.accel_x as f32;
         let accel_y = values.accel_y as f32;
         let accel_z = values.accel_z as f32;
+        println!("acc 2");
         Ok(Array::from_shape_vec((3,), vec![accel_x, accel_y, accel_z])
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -207,6 +217,7 @@ impl ModelProvider for KBotProvider {
 
     async fn get_gyroscope(&self) -> Result<Array<f32, IxDyn>, ModelError> {
         let _guard = self.imu_read_lock.lock().await;
+        println!("gyro 1");
         let values = self
             .imu
             .get_values()
@@ -215,6 +226,7 @@ impl ModelProvider for KBotProvider {
         let gyro_x = values.gyro_x as f32;
         let gyro_y = values.gyro_y as f32;
         let gyro_z = values.gyro_z as f32;
+        println!("gyro 2");
         Ok(Array::from_shape_vec((3,), vec![gyro_x, gyro_y, gyro_z])
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -234,6 +246,8 @@ impl ModelProvider for KBotProvider {
         action: Array<f32, IxDyn>,
     ) -> Result<(), ModelError> {
         assert_eq!(joint_names.len(), action.len());
+
+        println!("taking action...");
 
         let commands: Vec<ActuatorCommand> = joint_names
             .iter()
@@ -263,6 +277,8 @@ impl ModelProvider for KBotProvider {
             .command_actuators(commands)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
+
+        println!("took action");
 
         Ok(())
     }
