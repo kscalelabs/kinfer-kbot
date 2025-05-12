@@ -1,5 +1,6 @@
 use ::tracing_subscriber::FmtSubscriber;
 use std::path::PathBuf;
+use time::macros::format_description;
 use tracing::info;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{
@@ -27,9 +28,13 @@ pub fn initialize_file_and_console_logging() {
 
     let file_appender = RollingFileAppender::new(Rotation::HOURLY, log_dir, "kbot.log");
 
+    let timer = UtcTime::new(format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:6]Z"
+    ));
+
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
-        .with_timer(UtcTime::rfc_3339())
+        .with_timer(timer.clone())
         .with_target(true)
         .with_thread_ids(true)
         .with_thread_names(true)
@@ -41,7 +46,7 @@ pub fn initialize_file_and_console_logging() {
         .with_filter(EnvFilter::new("trace"));
 
     let console_layer = tracing_subscriber::fmt::layer()
-        .with_timer(UtcTime::rfc_3339())
+        .with_timer(timer)
         .with_target(true)
         .with_thread_ids(true)
         .with_thread_names(true)
