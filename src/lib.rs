@@ -29,6 +29,7 @@ impl KBotProvider {
                 vec!["can0", "can1", "can2", "can3", "can4"],
                 Duration::from_millis(100),
                 &kbot_actuators,
+                10, // feedback_debounce_ms
             )
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?;
@@ -77,11 +78,6 @@ impl ModelProvider for KBotProvider {
         &self,
         joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
-        // TODO: Instead of just polling the position from the supervisor,
-        // we should trigger the feedback command, wait for some amount of time,
-        // and then read the position. We need to make sure that we only
-        // trigger the feedback command once for both `get_joint_angles` and
-        // `get_joint_angular_velocities` on each call.`
         let actuator_ids = joint_names
             .iter()
             .map(|name| {
@@ -97,17 +93,24 @@ impl ModelProvider for KBotProvider {
             .get_actuators_state(actuator_ids)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
+
         let joint_angles = actuator_state
             .iter()
-            .map(|state| {
+            .enumerate()
+            .map(|(idx, state)| {
                 state.position.map(|p| p as f32).ok_or_else(|| {
+                    let joint_name_for_error = joint_names.get(idx).map_or_else(
+                        || format!("<unknown joint at index {}>", idx),
+                        |s| s.to_string(),
+                    );
                     ModelError::Provider(format!(
-                        "Position not available for joint: {}",
-                        state.actuator_id
+                        "Position not available for joint ID {} (name: {})",
+                        state.actuator_id, joint_name_for_error
                     ))
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+
         Ok(Array::from_shape_vec((joint_names.len(),), joint_angles)
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -138,12 +141,13 @@ impl ModelProvider for KBotProvider {
             .enumerate()
             .map(|(idx, state)| {
                 state.velocity.map(|v| v as f32).ok_or_else(|| {
-                    let joint_name_for_error = _joint_names
-                        .get(idx)
-                        .map_or("<unknown joint>", |s| s.as_str());
+                    let joint_name_for_error = _joint_names.get(idx).map_or_else(
+                        || format!("<unknown joint at index {}>", idx),
+                        |s| s.to_string(),
+                    );
                     ModelError::Provider(format!(
-                        "Velocity data not available (is None) for joint: {}",
-                        joint_name_for_error
+                        "Velocity data not available (is None) for joint ID {} (name: {})",
+                        state.actuator_id, joint_name_for_error
                     ))
                 })
             })

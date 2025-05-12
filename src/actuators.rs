@@ -3,10 +3,10 @@ use robstride::{
     ActuatorConfiguration, ActuatorType, CH341Transport, ControlConfig, SocketCanTransport,
     Supervisor, TransportType,
 };
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 const FEEDBACK_DELAY_MS: u64 = 3;
 
@@ -52,6 +52,8 @@ pub struct ActuatorState {
 
 pub struct Actuator {
     supervisor: Arc<Mutex<Supervisor>>,
+    feedback_debounce_ms: u64,
+    last_feedback_request: Mutex<Option<Instant>>,
 }
 
 impl Actuator {
@@ -59,6 +61,7 @@ impl Actuator {
         ports: Vec<&str>,
         actuator_timeout: Duration,
         actuators_config: &[(u8, ActuatorConfiguration)],
+        feedback_debounce_ms: u64,
     ) -> Result<Self> {
         let mut supervisor = Supervisor::new(actuator_timeout)?;
         let mut found_motors = vec![false; actuators_config.len()];
@@ -121,9 +124,17 @@ impl Actuator {
             }
         }
 
-        Ok(Self {
+        let actuator = Self {
             supervisor: Arc::new(Mutex::new(supervisor)),
-        })
+            feedback_debounce_ms,
+            last_feedback_request: Mutex::new(None),
+        };
+
+        actuator
+            .update_feedback(actuators_config.iter().map(|(id, _)| *id as u32).collect())
+            .await?;
+
+        Ok(actuator)
     }
 
     pub async fn command_actuators(
@@ -196,14 +207,9 @@ impl Actuator {
 
     pub async fn get_actuators_state(&self, actuator_ids: Vec<u32>) -> Result<Vec<ActuatorState>> {
         let mut responses = vec![];
+
+        self.update_feedback(actuator_ids.clone()).await?;
         let supervisor = self.supervisor.lock().await;
-
-        for id in &actuator_ids {
-            supervisor.request_feedback(*id as u8).await?;
-        }
-
-        // Sleep for 3ms to allow time for feedback responses to be processed
-        tokio::time::sleep(Duration::from_millis(FEEDBACK_DELAY_MS)).await;
 
         for id in actuator_ids {
             if let Ok(Some((feedback, ts))) = supervisor.get_feedback(id as u8).await {
@@ -215,9 +221,43 @@ impl Actuator {
                     torque: Some(feedback.torque as f64),
                     temperature: Some(feedback.temperature as f64),
                 });
+            } else {
+                tracing::warn!("No feedback or error for actuator ID: {}", id);
+                responses.push(ActuatorState {
+                    actuator_id: id as u32,
+                    online: false,
+                    position: None,
+                    velocity: None,
+                    torque: None,
+                    temperature: None,
+                });
             }
         }
         Ok(responses)
+    }
+
+    pub async fn update_feedback(&self, actuator_ids: Vec<u32>) -> Result<()> {
+        let mut last_request_guard = self.last_feedback_request.lock().await;
+
+        let duration_since_last_request = last_request_guard
+            .map(|last_request_instant| Instant::now().duration_since(last_request_instant))
+            .unwrap_or(Duration::from_millis(10 * self.feedback_debounce_ms));
+
+        if duration_since_last_request < Duration::from_millis(self.feedback_debounce_ms) {
+            return Ok(());
+        }
+
+        let supervisor_guard = self.supervisor.lock().await;
+        for id in actuator_ids {
+            supervisor_guard.request_feedback(id as u8).await?;
+        }
+        *last_request_guard = Some(Instant::now());
+
+        drop(supervisor_guard);
+
+        tokio::time::sleep(Duration::from_millis(FEEDBACK_DELAY_MS)).await;
+
+        Ok(())
     }
 
     pub fn create_kbot_actuators() -> Vec<(u8, ActuatorConfiguration)> {
