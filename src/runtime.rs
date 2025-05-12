@@ -65,6 +65,13 @@ impl ModelRuntime {
         running.store(true, Ordering::Relaxed);
 
         runtime.spawn(async move {
+            // Moves to home position.
+            model_provider.move_to_home().await?;
+            for i in 1..5 {
+                println!("Starting in {} seconds...", 5 - i);
+                sleep(Duration::from_secs(1)).await;
+            }
+
             let mut carry = model_runner
                 .init()
                 .await
@@ -73,13 +80,6 @@ impl ModelRuntime {
                 .get_joint_angles()
                 .await
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
-
-            // Moves to home position.
-            model_provider.move_to_home().await?;
-            for i in 5..1 {
-                println!("Starting in {} seconds...", i);
-                sleep(Duration::from_secs(1)).await;
-            }
 
             // Wait for the first tick, since it happens immediately.
             let mut read_interval = interval(dt);
