@@ -16,7 +16,8 @@ clap = { version = "4.4", features = ["derive"] }
 kinfer = "0.4.1"
 ndarray = "0.16.1"
 tokio = { version = "1.0", features = ["full"] }
-robstride = { git = "https://github.com/kscalelabs/actuator.git", branch = "logging", version = "0.3.7", features = ["instant_command"] }
+# robstride = { git = "https://github.com/kscalelabs/actuator.git", branch = "gitfish7/kbot/request_feedback_latency_debug", version = "0.3.7", features = ["instant_command"] }
+robstride = { git = "https://github.com/kscalelabs/actuator.git", branch = "gitfish7/kbot/request_feedback_latency_debug", features = ["instant_command"] }
 imu = "0.7.5"
 eyre = "0.6"
 tracing = "0.1"

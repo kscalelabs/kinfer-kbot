@@ -2,6 +2,7 @@ use ::kinfer::model::{ModelError, ModelRunner};
 use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
 use ::std::time::Duration;
+use std::time::SystemTime;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 use tracing::{debug, info};
@@ -103,6 +104,7 @@ impl ModelRuntime {
             while running.load(Ordering::Relaxed) {
                 let uuid = uuid::Uuid::new_v4();
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
+                let start = SystemTime::now();
                 debug!("runtime::model_runner_step::START uuid={}", uuid);
                 debug!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
 
@@ -111,7 +113,7 @@ impl ModelRuntime {
                     .await
                     .map_err(|e| ModelError::Provider(e.to_string()))?;
                 carry = next_carry;
-                debug!("runtime::model_runner_step::END uuid={}", uuid);
+                debug!("runtime::model_runner_step::END uuid={}, elapsed: {:?}", uuid, start.elapsed());
 
                 for i in 1..(slowdown_factor + 1) {
                     if !running.load(Ordering::Relaxed) {
@@ -133,7 +135,7 @@ impl ModelRuntime {
                 }
 
                 joint_positions = output;
-                debug!("runtime::main_control_loop::END uuid={}", uuid_main_control_loop);
+                debug!("runtime::main_control_loop::END uuid={}, elapsed: {:?}", uuid_main_control_loop, start.elapsed());
             }
             info!("Exiting main control loop");
             Ok::<(), ModelError>(())
