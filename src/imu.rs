@@ -1,8 +1,7 @@
 use ::eyre::Result;
 use ::imu::{HiwonderOutput, HiwonderReader, ImuFrequency, ImuReader};
 use ::std::time::Duration;
-use ::tracing::{error, info};
-use tracing::trace;
+use ::tracing::{debug, error, info};
 
 const IMU_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -90,7 +89,7 @@ impl IMU {
 
     pub async fn get_values(&self) -> Result<IMUData> {
         let uuid = uuid::Uuid::new_v4();
-        trace!("IMU log::get_values::START uuid={}", uuid);
+        debug!("IMU log::get_values::START uuid={}", uuid);
         let direct_read = self.imu_reader.get_data()?;
         let accel = match direct_read.accelerometer {
             Some(accel) => accel,
@@ -104,7 +103,7 @@ impl IMU {
             Some(quat) => quat,
             None => return Err(eyre::eyre!("Failed to read quaternion")),
         };
-        trace!("IMU log::get_values::END uuid={}", uuid);
+        debug!("IMU log::get_values::END uuid={}", uuid);
         Ok(IMUData {
             accel_x: accel.x,
             accel_y: accel.y,

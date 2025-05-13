@@ -4,7 +4,7 @@ use ::std::sync::Arc;
 use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
-use tracing::{info, trace};
+use tracing::{debug, info};
 
 use crate::provider::KBotProvider;
 
@@ -103,15 +103,15 @@ impl ModelRuntime {
             while running.load(Ordering::Relaxed) {
                 let uuid = uuid::Uuid::new_v4();
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
-                trace!("runtime::model_runner_step::START uuid={}", uuid);
-                trace!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
+                debug!("runtime::model_runner_step::START uuid={}", uuid);
+                debug!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
 
                 let (output, next_carry) = model_runner
                     .step(carry)
                     .await
                     .map_err(|e| ModelError::Provider(e.to_string()))?;
                 carry = next_carry;
-                trace!("runtime::model_runner_step::END uuid={}", uuid);
+                debug!("runtime::model_runner_step::END uuid={}", uuid);
 
                 for i in 1..(slowdown_factor + 1) {
                     if !running.load(Ordering::Relaxed) {
@@ -133,7 +133,7 @@ impl ModelRuntime {
                 }
 
                 joint_positions = output;
-                trace!("runtime::main_control_loop::END uuid={}", uuid_main_control_loop);
+                debug!("runtime::main_control_loop::END uuid={}", uuid_main_control_loop);
             }
             info!("Exiting main control loop");
             Ok::<(), ModelError>(())
