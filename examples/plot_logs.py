@@ -103,7 +103,8 @@ def df_by_type(df):
                 # Calculate elapsed time
                 elapsed_time = (second_event['timestamp'] - first_event['timestamp']).total_seconds()
                 
-                if elapsed_time > 0.1:
+                # Pass on the erronously large or small events
+                if elapsed_time > 0.1 or elapsed_time < 0.0001:
                     continue
 
                 paired_data.append({
@@ -168,11 +169,18 @@ def plot_histograms(df, output_dir, custom_title):
         if len(times) > 0:
             mean_val = np.mean(times)
             median_val = np.median(times)
-            
+            variance_val = np.var(times)
+            std_val = np.std(times)
+            bin_size = x_limit / (num_bins - 1) 
             plt.axvline(mean_val, color='red', linestyle='dashed', linewidth=1, 
                        label=f'Mean: {mean_val:.4f}ms')
             plt.axvline(median_val, color='green', linestyle='dashed', linewidth=1, 
                        label=f'Median: {median_val:.4f}ms')
+            plt.text(0.95, 0.95, f"Var: {variance_val:.4f}, Std: {std_val:.4f} \n Bin Size: {bin_size:.4f}",
+            transform=plt.gca().transAxes,
+            verticalalignment='top', horizontalalignment='right',
+            fontsize=9, bbox=dict(boxstyle="round", facecolor="white", alpha=0.7))
+
             
             plt.legend()
         
