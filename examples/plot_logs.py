@@ -1,11 +1,9 @@
 import pandas as pd
 import re
-
-import re
 import matplotlib.pyplot as plt
 import os
 import numpy as np
-
+import shutil
 import argparse
 
 # Timestamp pattern (ISO format)
@@ -143,12 +141,17 @@ def plot_histograms(df, output_dir, custom_title):
         plt.figure(figsize=(15, 7))
         
         # Calculate max time and ensure x-axis is at least 0 to 1ms
-        max_time = np.max(times)
-        x_limit = max(1.0, max_time * 1.1)  # Ensure at least 0-1ms range
+        # max_time = np.max(times)
+        # x_limit = max(1.0, max_time * 1.1)  # Ensure at least 0-1ms range
         
         # Create bins from 0 to max value
-        num_bins = min(200, max(91, int(x_limit*10)+1))  # Reasonable number of bins
-        bins = np.linspace(0, x_limit, num_bins)
+        # num_bins = min(200, max(91, int(x_limit*10)+1))  # Reasonable number of bins
+        # bins = np.linspace(0, x_limit, num_bins)
+        x_limit = 25
+
+        bin_size = 0.1
+        bins = np.arange(0, 25 + bin_size, bin_size)
+        
         
         # Plot histogram
         plt.hist(times, bins=bins, color='skyblue', edgecolor='black')
@@ -156,6 +159,7 @@ def plot_histograms(df, output_dir, custom_title):
         plt.ylabel('Frequency (Log Scale)')
         
         # Set x-axis limit
+        # Artifically changing limit to make comparison easy. Does not effect metrics calculated 
         plt.xlim(0, x_limit)
         
         # Format x-axis ticks to show 2 decimal places
@@ -171,12 +175,11 @@ def plot_histograms(df, output_dir, custom_title):
             median_val = np.median(times)
             variance_val = np.var(times)
             std_val = np.std(times)
-            bin_size = x_limit / (num_bins - 1) 
             plt.axvline(mean_val, color='red', linestyle='dashed', linewidth=1, 
                        label=f'Mean: {mean_val:.4f}ms')
             plt.axvline(median_val, color='green', linestyle='dashed', linewidth=1, 
                        label=f'Median: {median_val:.4f}ms')
-            plt.text(0.95, 0.95, f"Var: {variance_val:.4f}, Std: {std_val:.4f} \n Bin Size: {bin_size:.4f}",
+            plt.text(0.95, 0.95, f"Var: {variance_val:.4f}, Std: {std_val:.4f} \n Bin Size: {bin_size:.4f}. \n Plot truncated at 25ms, but metrics includes.",
             transform=plt.gca().transAxes,
             verticalalignment='top', horizontalalignment='right',
             fontsize=9, bbox=dict(boxstyle="round", facecolor="white", alpha=0.7))
@@ -322,6 +325,8 @@ def main():
     # Create output directory with custom title prefix
     output_dir = f"{custom_title}_plots"
     os.makedirs(output_dir, exist_ok=True)
+
+    shutil.copy("logs/kbot.log", os.path.join(output_dir, "kbot.log"))
 
     # Pass custom_title to plotting functions
     plot_histograms(df, output_dir, custom_title)
