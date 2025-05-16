@@ -7,6 +7,7 @@ use kinfer_kbot::provider::KBotProvider;
 use kinfer_kbot::runtime::ModelRuntime;
 use kinfer_kbot::{initialize_file_and_console_logging, initialize_logging};
 
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -33,8 +34,7 @@ struct Args {
     file_logging: bool,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     if args.file_logging {
@@ -45,20 +45,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let model_path = Path::new(&args.model_path);
 
-    let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
-    let model_runner = ModelRunner::new(model_path, model_provider.clone()).await?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
 
-    // Initialize and start the model runtime.
+    // assuming your `main` returns a Result<_, E> so you can use `?`
+    let model_provider = runtime.block_on(async {
+        // first initialize the provider
+        let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
+        // then use it to build the runner
+        // return both
+        Ok::<_, kinfer::ModelError>(model_provider)
+    }).unwrap();
+
+    let model_runner = runtime.block_on(async {
+        // Initialize the model runner with the model path and provider
+        ModelRunner::new(model_path, model_provider.clone()).await
+    })?;
+
+    // drop the runtime
+    drop(runtime);
+
+    // Initialize and start the model (real) runtime
     let mut model_runtime = ModelRuntime::new(model_provider, Arc::new(model_runner), args.dt);
     model_runtime.set_slowdown_factor(args.slowdown_factor);
     model_runtime.set_magnitude_factor(args.magnitude_factor);
     model_runtime.start()?;
 
     // Wait for the Ctrl-C signal
-    tokio::signal::ctrl_c().await?;
+    // tokio::signal::ctrl_c().await?;
 
     // Stop the model runtime
-    model_runtime.stop();
+    // model_runtime.stop();
 
     Ok(())
 }

@@ -7,6 +7,9 @@ use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 use tracing::{debug, info};
 
+use ::tokio::runtime::Builder;
+use thread_priority::*;
+
 use crate::provider::KBotProvider;
 
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -61,9 +64,24 @@ impl ModelRuntime {
         let slowdown_factor = self.slowdown_factor;
         let magnitude_factor = self.magnitude_factor;
 
-        let runtime = Runtime::new()?;
         running.store(true, Ordering::Relaxed);
 
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("my-tokio-worker")
+            .on_thread_start(|| {
+                // Set real-time or high priority on each worker thread
+                let tid = thread_native_id();
+                let policy = ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo);
+                let priority = ThreadPriority::Max;
+
+                if let Err(e) = set_thread_priority_and_policy(tid, priority, policy) {
+                    eprintln!("Failed to set thread priority: {:?}", e);
+                }
+            })
+            .enable_all()
+            .build()
+            .unwrap();
         runtime.spawn(async move {
             info!("Starting model runtime");
 

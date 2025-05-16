@@ -25,3 +25,4 @@ tracing-subscriber = {version = "0.3.19", features=["time"]}
 uuid = { version = "1.6.1", features = ["v4"] }
 tracing-appender = "0.2.3"
 time = {version="0.3.41", features=["macros"]}
+thread-priority = "1.2.0"
