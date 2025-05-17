@@ -1,14 +1,14 @@
 use ::kinfer::model::{ModelError, ModelRunner};
 use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
-use ::std::time::Duration;
+use ::std::time::{Duration, Instant};
 use std::time::SystemTime;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 use tracing::{debug, info};
 
 use crate::provider::KBotProvider;
-use nix::sys::timerfd::{TimerFd, ClockId, TimerFlags, Expiration, TimerSetTimeFlags};
+
 // We trigger a read N milliseconds before reading the current actuator state,
 // to account for the asynchronicity of the CAN RX buffer.
 const TRIGGER_READ_BEFORE: Duration = Duration::from_millis(2);
@@ -61,6 +61,7 @@ impl ModelRuntime {
         let slowdown_factor = self.slowdown_factor;
         let magnitude_factor = self.magnitude_factor;
 
+        let spin_ahead = Duration::from_micros(100); 
         let runtime = Runtime::new()?;
         running.store(true, Ordering::Relaxed);
 
@@ -90,24 +91,34 @@ impl ModelRuntime {
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
 
             // Wait for the first tick, since it happens immediately.
-            // let mut read_interval = interval(dt);
-            // let mut command_interval = interval(dt);
-            let mut read_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
-            read_interval.set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty());
+            let mut read_interval = interval(dt - spin_ahead);
+            let mut command_interval = interval(dt - spin_ahead);
+            // let mut read_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            // let adjusted_dt = dt - spin_ahead;
+            // read_interval.set(Expiration::Interval(adjusted_dt.into()), TimerSetTimeFlags::empty());
 
+            // let mut command_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            // command_interval.set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty());
+
+            // Two clocks to phase shift 2 ms apart (TRIGGER_READ_BEFORE)
             // Start the two intervals N milliseconds apart. The first tick is
             // always instantaneous and represents the start of the interval
             // ticks.
-            // read_interval.tick().await;
-            read_interval.wait();
-            //sleep(dt - TRIGGER_READ_BEFORE).await;
-            //command_interval.tick().await;
+            read_interval.tick().await;
+            // read_interval.wait();
+            sleep(dt - TRIGGER_READ_BEFORE).await;
+            
+            command_interval.tick().await;
+            // command_interval.wait();
+
 
             info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
                 let uuid = uuid::Uuid::new_v4();
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
                 let start = SystemTime::now();
+                let spin_target = Instant::now() + dt;
+
                 debug!("runtime::model_runner_step::START uuid={}", uuid);
                 debug!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
 
@@ -132,13 +143,21 @@ impl ModelRuntime {
                     // Trigger an actuator read N milliseconds before the next
                     // command tick, to make sure the observations are as fresh
                     // as possible.
-                    // read_interval.tick().await;
-                    read_interval.wait();
+
+                    read_interval.tick().await;
+                    // read_interval.wait();
                     model_provider.trigger_actuator_read().await?;
-                    // command_interval.tick().await;
+                    // command_interval.wait()
+                    command_interval.tick().await;
+                    while Instant::now() < spin_target {
+                        std::hint::spin_loop();
+                    }
                 }
 
                 joint_positions = output;
+
+         
+
                 debug!("runtime::main_control_loop::END uuid={}, elapsed: {:?}", uuid_main_control_loop, start.elapsed());
             }
             info!("Exiting main control loop");
