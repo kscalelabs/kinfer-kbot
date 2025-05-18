@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# bring up CAN bus once
+sudo rm -rf logs/*
 
 # run N trials
 for trial in $(seq 1 "$N"); do

@@ -1,10 +1,9 @@
 use ::kinfer::model::{ModelError, ModelRunner};
 use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
-use ::std::time::Duration;
-use std::time::SystemTime;
+use ::std::time::{Duration, Instant, SystemTime};
 use ::tokio::runtime::Runtime;
-use ::tokio::time::sleep;
+use ::tokio::time::{sleep, interval};
 use tracing::{debug, info};
 
 use crate::provider::KBotProvider;
@@ -89,14 +88,17 @@ impl ModelRuntime {
                 .await
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
 
+            let spin_ahead = Duration::from_micros(100);
+            let adjusted_dt = dt - spin_ahead;
+
             // Wait for the first tick, since it happens immediately.
             let read_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
-            read_interval.set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty()).map_err(|e| {
+            read_interval.set(Expiration::Interval(adjusted_dt.into()), TimerSetTimeFlags::empty()).map_err(|e| {
                 ModelError::Provider(format!("Failed to set timer: {}", e))
             })?;
 
             let command_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
-            command_interval.set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty()).map_err(|e| {
+            command_interval.set(Expiration::Interval(adjusted_dt.into()), TimerSetTimeFlags::empty()).map_err(|e| {
                 ModelError::Provider(format!("Failed to set timer: {}", e))
             })?;
 
@@ -116,6 +118,8 @@ impl ModelRuntime {
                 let uuid = uuid::Uuid::new_v4();
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
                 let start = SystemTime::now();
+                let spin_target = Instant::now() + dt;
+
                 debug!("runtime::model_runner_step::START uuid={}", uuid);
                 debug!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
 
@@ -147,6 +151,11 @@ impl ModelRuntime {
                     command_interval.wait().map_err(|e| {
                         ModelError::Provider(format!("Failed to wait for timer: {}", e))
                     })?;
+
+                    while Instant::now() < spin_target {
+                        std::hint::spin_loop();
+                    }
+
                 }
 
                 joint_positions = output;
