@@ -3,6 +3,7 @@ use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
 use ::std::time::{Duration, Instant};
+use tracing::debug;
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
@@ -78,13 +79,20 @@ impl KBotProvider {
         &self,
         actuator_ids: &[u32],
     ) -> Result<Vec<ActuatorState>, ModelError> {
-        self.actuators
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_actuator_state::START uuid={}", uuid);
+        let result = self
+            .actuators
             .get_actuators_state(actuator_ids.to_vec())
             .await
-            .map_err(|e| ModelError::Provider(e.to_string()))
+            .map_err(|e| ModelError::Provider(e.to_string()));
+        debug!("provider::get_actuator_state::END uuid={}", uuid);
+        result
     }
 
     pub async fn trigger_actuator_read(&self) -> Result<(), ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::trigger_actuator_read::START uuid={}", uuid);
         let actuator_ids = ACTUATOR_NAME_TO_ID
             .iter()
             .map(|(_, id)| *id)
@@ -93,6 +101,7 @@ impl KBotProvider {
             .trigger_actuator_read(actuator_ids)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
+        debug!("provider::trigger_actuator_read::END uuid={}", uuid);
         Ok(())
     }
 
@@ -121,6 +130,8 @@ impl ModelProvider for KBotProvider {
         &self,
         joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_joint_angles::START uuid={}", uuid);
         let actuator_ids = self.get_actuator_ids(joint_names)?;
         let actuator_state = self.get_actuator_state(&actuator_ids).await?;
 
@@ -140,7 +151,7 @@ impl ModelProvider for KBotProvider {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-
+        debug!("provider::get_joint_angles::END uuid={}", uuid);
         Ok(Array::from_shape_vec((joint_names.len(),), joint_angles)
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -150,6 +161,11 @@ impl ModelProvider for KBotProvider {
         &self,
         joint_names: &[String],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!(
+            "provider::get_joint_angular_velocities::START uuid={}",
+            uuid
+        );
         let actuator_ids = self.get_actuator_ids(joint_names)?;
         let actuator_state = self.get_actuator_state(&actuator_ids).await?;
 
@@ -169,7 +185,10 @@ impl ModelProvider for KBotProvider {
                 })
             })
             .collect::<Result<Vec<f32>, ModelError>>()?;
-
+        debug!(
+            "provider::get_joint_angular_velocities::END uuid={}",
+            uuid
+        );
         Ok(
             Array::from_shape_vec((joint_names.len(),), joint_angular_velocities)
                 .map_err(|e| ModelError::Provider(e.to_string()))?
@@ -178,6 +197,8 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_projected_gravity(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_projected_gravity::START uuid={}", uuid);
         let values = self
             .imu
             .get_values()
@@ -190,6 +211,7 @@ impl ModelProvider for KBotProvider {
             w: values.quat_w,
         }
         .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
+        debug!("provider::get_projected_gravity::END uuid={}", uuid);
         Ok(Array::from_shape_vec(
             (3,),
             vec![
@@ -203,6 +225,8 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        trace!("provider::get_accelerometer::START uuid={}", uuid);
         let values = self
             .imu
             .get_values()
@@ -273,8 +297,6 @@ impl ModelProvider for KBotProvider {
             .command_actuators(commands)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
-
-        println!("took action {:?} at time {:?}", action, Instant::now());
 
         Ok(())
     }
