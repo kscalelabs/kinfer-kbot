@@ -3,9 +3,12 @@ use ::kinfer::model::ModelRunner;
 use ::std::path::Path;
 use ::std::sync::Arc;
 
-use kinfer_kbot::initialize_logging;
-use kinfer_kbot::provider::KBotProvider;
-use kinfer_kbot::runtime::ModelRuntime;
+use kinfer_kbot::{
+    initialize_file_and_console_logging,
+    initialize_logging,
+    provider::KBotProvider,
+    runtime::ModelRuntime,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -28,13 +31,21 @@ struct Args {
     /// Torque scale
     #[arg(long, default_value_t = 1.0)]
     torque_scale: f32,
+    /// File logging
+    #[arg(long, default_value = "false")]
+    file_logging: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    initialize_logging();
-
     let args = Args::parse();
+
+    if args.file_logging {
+        initialize_file_and_console_logging();
+    } else {
+        initialize_logging();
+    }
+
     let model_path = Path::new(&args.model_path);
 
     let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
