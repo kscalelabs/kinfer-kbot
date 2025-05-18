@@ -23,7 +23,7 @@ pub fn initialize_logging() {
 }
 
 pub fn initialize_file_and_console_logging() {
-    let log_dir = PathBuf::from("logs");
+    let log_dir = std::path::PathBuf::from("logs");
     std::fs::create_dir_all(&log_dir).expect("Failed to create logs directory");
 
     let file_appender = tracing_appender::rolling::never(log_dir, "kbot.log");

@@ -1,7 +1,7 @@
 use ::eyre::Result;
 use ::imu::{HiwonderOutput, HiwonderReader, ImuFrequency, ImuReader};
 use ::std::time::Duration;
-use ::tracing::{debug, trace, error, info};
+use ::tracing::{trace, error, info};
 
 const IMU_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 

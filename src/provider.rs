@@ -3,7 +3,7 @@ use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
 use ::std::time::{Duration, Instant};
-use tracing::{trace, debug, info};
+use tracing::{trace, debug};
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};

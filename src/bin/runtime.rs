@@ -3,9 +3,12 @@ use ::kinfer::model::ModelRunner;
 use ::std::path::Path;
 use ::std::sync::Arc;
 
-use kinfer_kbot::provider::KBotProvider;
-use kinfer_kbot::runtime::ModelRuntime;
-use kinfer_kbot::{initialize_file_and_console_logging, initialize_logging};
+use kinfer_kbot::{
+    initialize_file_and_console_logging,
+    initialize_logging,
+    provider::KBotProvider,
+    runtime::ModelRuntime,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
