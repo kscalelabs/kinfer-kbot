@@ -6,6 +6,7 @@ use robstride::{
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tracing::trace;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ActuatorCommand {
@@ -129,6 +130,8 @@ impl Actuator {
         &self,
         commands: Vec<ActuatorCommand>,
     ) -> Result<Vec<ActionResult>> {
+        let uuid = uuid::Uuid::new_v4();
+        trace!("actuator::command_actuators::START uuid={}", uuid);
         let mut results = vec![];
         let mut supervisor = self.supervisor.lock().await;
 
@@ -153,10 +156,13 @@ impl Actuator {
             });
         }
 
+        trace!("actuator::command_actuators::END uuid={}", uuid);
         Ok(results)
     }
 
     pub async fn configure_actuator(&self, config: ConfigureRequest) -> Result<ActionResponse> {
+        let uuid = uuid::Uuid::new_v4();
+        trace!("actuator::configure_actuator::START uuid={}", uuid);
         let motor_id = config.actuator_id as u8;
         let mut supervisor = self.supervisor.lock().await;
 
@@ -186,6 +192,7 @@ impl Actuator {
             supervisor.change_id(motor_id, new_id as u8).await?;
         }
 
+        trace!("actuator::configure_actuator::END uuid={}", uuid);
         Ok(ActionResponse {
             success: result.is_ok(),
             error: result.err().map(|e| e.to_string()),
@@ -193,14 +200,19 @@ impl Actuator {
     }
 
     pub async fn trigger_actuator_read(&self, actuator_ids: Vec<u32>) -> Result<()> {
+        let uuid = uuid::Uuid::new_v4();
+        trace!("actuator::trigger_actuator_read::START uuid={}", uuid);
         let supervisor = self.supervisor.lock().await;
         for id in actuator_ids {
             supervisor.request_feedback(id as u8).await?;
         }
+        trace!("actuator::trigger_actuator_read::END uuid={}", uuid);
         Ok(())
     }
 
     pub async fn get_actuators_state(&self, actuator_ids: Vec<u32>) -> Result<Vec<ActuatorState>> {
+        let uuid = uuid::Uuid::new_v4();
+        trace!("actuator::get_actuators_state::START uuid={}", uuid);
         let mut responses = vec![];
 
         // Reads the latest feedback from each actuator.
@@ -227,6 +239,7 @@ impl Actuator {
                 });
             }
         }
+        trace!("actuator::get_actuators_state::END uuid={}", uuid);
         Ok(responses)
     }
 
