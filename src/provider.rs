@@ -226,7 +226,6 @@ impl ModelProvider for KBotProvider {
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
         let uuid = uuid::Uuid::new_v4();
-        trace!("provider::get_accelerometer::START uuid={}", uuid);
         let values = self
             .imu
             .get_values()
