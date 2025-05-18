@@ -5,10 +5,8 @@ use ::std::time::Duration;
 use std::time::SystemTime;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::sleep;
-use tracing::debug;
+use tracing::{debug, info};
 
-use crate::actuators::ActuatorCommand;
-use crate::constants::HOME_POSITION;
 use crate::provider::KBotProvider;
 use nix::sys::timerfd::{TimerFd, ClockId, TimerFlags, Expiration, TimerSetTimeFlags};
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -67,6 +65,8 @@ impl ModelRuntime {
         running.store(true, Ordering::Relaxed);
 
         runtime.spawn(async move {
+            info!("Starting model runtime");
+
             // Moves to home position.
             model_provider.move_to_home().await?;
 
@@ -111,6 +111,7 @@ impl ModelRuntime {
                 ModelError::Provider(format!("Failed to wait for timer: {}", e))
             })?;
 
+            info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
                 let uuid = uuid::Uuid::new_v4();
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
@@ -151,6 +152,7 @@ impl ModelRuntime {
                 joint_positions = output;
                 debug!("runtime::main_control_loop::END uuid={}, elapsed: {:?}", uuid_main_control_loop, start.elapsed());
             }
+            info!("Exiting main control loop");
             Ok::<(), ModelError>(())
         });
 
@@ -159,6 +161,7 @@ impl ModelRuntime {
     }
 
     pub fn stop(&mut self) {
+        info!("Stopping model runtime");
         self.running.store(false, Ordering::Relaxed);
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown_background();
