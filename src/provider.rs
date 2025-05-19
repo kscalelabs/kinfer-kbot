@@ -3,7 +3,7 @@ use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
 use ::ndarray::{Array, IxDyn};
 use ::std::time::{Duration, Instant};
-use tracing::{trace, debug};
+use tracing::{debug, trace};
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
@@ -12,6 +12,7 @@ use crate::imu::IMU;
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
+    start_time: Instant,
 }
 
 impl KBotProvider {
@@ -59,7 +60,11 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self { actuators, imu })
+        Ok(Self {
+            actuators,
+            imu,
+            start_time: Instant::now(),
+        })
     }
 
     fn get_actuator_ids(&self, joint_names: &[String]) -> Result<Vec<u32>, ModelError> {
@@ -188,10 +193,7 @@ impl ModelProvider for KBotProvider {
                 })
             })
             .collect::<Result<Vec<f32>, ModelError>>()?;
-        debug!(
-            "provider::get_joint_angular_velocities::END uuid={}",
-            uuid
-        );
+        debug!("provider::get_joint_angular_velocities::END uuid={}", uuid);
         Ok(
             Array::from_shape_vec((joint_names.len(),), joint_angular_velocities)
                 .map_err(|e| ModelError::Provider(e.to_string()))?
@@ -225,6 +227,13 @@ impl ModelProvider for KBotProvider {
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?
         .into_dyn())
+    }
+
+    async fn get_time(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let time = self.start_time.elapsed().as_secs_f32();
+        Ok(Array::from_shape_vec((1,), vec![time])
+            .map_err(|e| ModelError::Provider(e.to_string()))?
+            .into_dyn())
     }
 
     async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
@@ -262,7 +271,12 @@ impl ModelProvider for KBotProvider {
     }
 
     async fn get_command(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        Err(ModelError::Provider("Not implemented".to_string()))
+        // Return a default command vector of [1, 0, 0, 0, 0, 0, 0] (standing)
+        Ok(
+            Array::from_shape_vec((7,), vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                .map_err(|e| ModelError::Provider(e.to_string()))?
+                .into_dyn(),
+        )
     }
 
     async fn get_carry(&self, carry: Array<f32, IxDyn>) -> Result<Array<f32, IxDyn>, ModelError> {

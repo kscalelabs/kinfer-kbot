@@ -2,13 +2,13 @@ use ::kinfer::model::{ModelError, ModelRunner};
 use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
 use ::std::time::Duration;
-use std::time::SystemTime;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::sleep;
+use std::time::SystemTime;
 use tracing::{debug, info};
 
 use crate::provider::KBotProvider;
-use nix::sys::timerfd::{TimerFd, ClockId, TimerFlags, Expiration, TimerSetTimeFlags};
+use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFlags};
 // We trigger a read N milliseconds before reading the current actuator state,
 // to account for the asynchronicity of the CAN RX buffer.
 const TRIGGER_READ_BEFORE: Duration = Duration::from_millis(2);
@@ -90,26 +90,28 @@ impl ModelRuntime {
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
 
             // Wait for the first tick, since it happens immediately.
-            let read_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
-            read_interval.set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty()).map_err(|e| {
-                ModelError::Provider(format!("Failed to set timer: {}", e))
-            })?;
+            let read_interval =
+                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            read_interval
+                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
+                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
 
-            let command_interval = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
-            command_interval.set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty()).map_err(|e| {
-                ModelError::Provider(format!("Failed to set timer: {}", e))
-            })?;
+            let command_interval =
+                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            command_interval
+                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
+                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
 
             // Start the two intervals N milliseconds apart. The first tick is
             // always instantaneous and represents the start of the interval
             // ticks.
-            read_interval.wait().map_err(|e| {
-                ModelError::Provider(format!("Failed to wait for timer: {}", e))
-            })?;
+            read_interval
+                .wait()
+                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
             sleep(dt - TRIGGER_READ_BEFORE).await;
-            command_interval.wait().map_err(|e| {
-                ModelError::Provider(format!("Failed to wait for timer: {}", e))
-            })?;
+            command_interval
+                .wait()
+                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
 
             info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
@@ -117,14 +119,21 @@ impl ModelRuntime {
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
                 let start = SystemTime::now();
                 debug!("runtime::model_runner_step::START uuid={}", uuid);
-                debug!("runtime::main_control_loop::START uuid={}", uuid_main_control_loop);
+                debug!(
+                    "runtime::main_control_loop::START uuid={}",
+                    uuid_main_control_loop
+                );
 
                 let (output, next_carry) = model_runner
                     .step(carry)
                     .await
                     .map_err(|e| ModelError::Provider(e.to_string()))?;
                 carry = next_carry;
-                debug!("runtime::model_runner_step::END uuid={}, elapsed: {:?}", uuid, start.elapsed());
+                debug!(
+                    "runtime::model_runner_step::END uuid={}, elapsed: {:?}",
+                    uuid,
+                    start.elapsed()
+                );
 
                 for i in 1..(slowdown_factor + 1) {
                     if !running.load(Ordering::Relaxed) {
@@ -150,7 +159,11 @@ impl ModelRuntime {
                 }
 
                 joint_positions = output;
-                debug!("runtime::main_control_loop::END uuid={}, elapsed: {:?}", uuid_main_control_loop, start.elapsed());
+                debug!(
+                    "runtime::main_control_loop::END uuid={}, elapsed: {:?}",
+                    uuid_main_control_loop,
+                    start.elapsed()
+                );
             }
             info!("Exiting main control loop");
             Ok::<(), ModelError>(())

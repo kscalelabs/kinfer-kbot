@@ -4,9 +4,7 @@ use ::std::path::Path;
 use ::std::sync::Arc;
 
 use kinfer_kbot::{
-    initialize_file_and_console_logging,
-    initialize_logging,
-    provider::KBotProvider,
+    initialize_file_and_console_logging, initialize_logging, provider::KBotProvider,
     runtime::ModelRuntime,
 };
 
