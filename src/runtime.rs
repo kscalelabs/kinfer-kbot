@@ -118,11 +118,11 @@ impl ModelRuntime {
                 let uuid = uuid::Uuid::new_v4();
                 let uuid_main_control_loop = uuid::Uuid::new_v4();
                 let start = SystemTime::now();
-                debug!("runtime::model_runner_step::START uuid={}", uuid);
                 debug!(
                     "runtime::main_control_loop::START uuid={}",
                     uuid_main_control_loop
                 );
+                debug!("runtime::model_runner_step::START uuid={}", uuid);
 
                 let (output, next_carry) = model_runner
                     .step(carry)

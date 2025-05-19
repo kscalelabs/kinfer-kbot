@@ -22,10 +22,10 @@ pub const ACTUATOR_NAME_TO_ID: &[(&str, u32)] = &[
 ];
 
 // Tau (soft torque limit) values based on actuator types.
-const TAU_00: f32 = 9.8; // For robstride_00 actuators
-const TAU_02: f32 = 11.9; // For robstride_02 actuators
-const TAU_03: f32 = 42.0; // For robstride_03 actuators
-const TAU_04: f32 = 84.0; // For robstride_04 actuators
+const TAU_00: f32 = 9.8/10.0; // For robstride_00 actuators
+const TAU_02: f32 = 11.9/10.0; // For robstride_02 actuators
+const TAU_03: f32 = 42.0/10.0; // For robstride_03 actuators
+const TAU_04: f32 = 84.0/10.0; // For robstride_04 actuators
 
 // This matches the values in metadata.json from the K-Scale API.
 pub const ACTUATOR_KP_KD: [(usize, f32, f32, f32); 20] = [
