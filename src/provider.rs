@@ -1,7 +1,7 @@
 use ::async_trait::async_trait;
 use ::imu::{Quaternion, Vector3};
 use ::kinfer::{ModelError, ModelProvider};
-use ::ndarray::{Array, IxDyn};
+use ::ndarray::{arr1, Array, IxDyn};
 use ::std::time::{Duration, Instant};
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
@@ -11,6 +11,7 @@ use crate::imu::IMU;
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
+    start: Instant,
 }
 
 impl KBotProvider {
@@ -58,7 +59,11 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self { actuators, imu })
+        Ok(Self {
+            actuators,
+            imu,
+            start: Instant::now(),
+        })
     }
 
     fn get_actuator_ids(&self, joint_names: &[String]) -> Result<Vec<u32>, ModelError> {
@@ -277,5 +282,11 @@ impl ModelProvider for KBotProvider {
         println!("took action {:?} at time {:?}", action, Instant::now());
 
         Ok(())
+    }
+
+    /// Returns seconds since the provider was created (shape: `[1]`).
+    async fn get_time(&self) -> Result<Array<f32, IxDyn>, ModelError> {
+        let secs = self.start.elapsed().as_secs_f32();
+        Ok(arr1(&[secs]).into_dyn())
     }
 }
