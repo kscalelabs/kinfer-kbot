@@ -5,7 +5,6 @@ import os
 import numpy as np
 import shutil
 import argparse
-import matplotlib.colors as mcolors
 
 
 TIMESTAMP_REGEX = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)")
@@ -13,7 +12,8 @@ PRINT_TYPE_REGEX = re.compile(r"Z\s+([^\s]+)")
 THREAD_ID_REGEX = re.compile(r"ThreadId\((\d+)\)")
 EVENT_REGEX = re.compile(r"ThreadId\(\d+\)\s+kinfer_kbot::[^:]+: src/[^:]+:\d+: ([^\s,]+)")
 UUID_REGEX = re.compile(r"uuid=([0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})")
-# ELAPSED_REGEX = re.compile(r"elapsed: Ok\(([^)]+)\)")
+
+
 
 def log_to_dataframe(log_file):
     print(f"Parsing log file: {log_file}")
@@ -97,400 +97,384 @@ def df_calc_pair(df):
     
     return df
 
-def plot_histograms(df, output_dir, custom_title):
-    command_types = df['command_type'].unique()
-    
-    for command in command_types:
-        cmd_data = df[df['command_type'] == command]
-        if len(cmd_data) < 2:  # Skip if too few data points
-            continue
-            
-        times = cmd_data['event_elapsed_time'].values * 1000
-        
-        plt.figure(figsize=(15, 7))
-        
-        bin_size = 0.1  # 0.1ms bin size
-        x_limit = 22  # 22ms limit
-        bins = np.arange(0, x_limit + bin_size, bin_size)
 
-        plt.hist(times, bins=bins, color='skyblue', edgecolor='black')
-        plt.yscale('log')  # Keep y-axis as log scale
-        plt.ylabel('Frequency (Log Scale)')
-        
-        plt.xlim(0, x_limit)
-        
-        plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
-            
-        plt.title(f'{custom_title} - Histogram of Event Time Deltas (ms)\n({command})', wrap=True)
-        plt.xlabel('Time Elapsed (milliseconds)')
-        plt.grid(axis='y', alpha=0.75, which='both')
-        
-        # Add statistics with 4 decimal places
-        if len(times) > 0:
-            mean_val = np.mean(times)
-            median_val = np.median(times)
-            variance_val = np.var(times)
-            std_val = np.std(times)
-            plt.axvline(mean_val, color='red', linestyle='dashed', linewidth=1, 
-                       label=f'Mean: {mean_val:.4f}ms')
-            plt.axvline(median_val, color='green', linestyle='dashed', linewidth=1, 
-                       label=f'Median: {median_val:.4f}ms')
-            plt.text(0.95, 0.95, f"Var: {variance_val:.4f}, Std: {std_val:.4f} \n Bin Size: {bin_size:.4f}. \n Plot truncated at 22ms, but metrics includes.",
-            transform=plt.gca().transAxes,
-            verticalalignment='top', horizontalalignment='right',
-            fontsize=9, bbox=dict(boxstyle="round", facecolor="white", alpha=0.7))
-
-            
-            plt.legend()
-        
-        plt.tight_layout()
-        safe_command = command.replace('::', '_').replace('/', '_')
-        plt.savefig(os.path.join(output_dir, f"{safe_command}_histogram.png"))
-        plt.close()
-
-
-def plot_combined_histograms(df, output_dir, custom_title):
-
-    command_types = df['command_type'].unique()
-    df = df.dropna(subset=['event_elapsed_time'])
-    
-    plt.figure(figsize=(15, 7))
-    
-    bin_size = 0.1  # 0.1ms bin size
-    x_limit = 22  # 22ms limit
-    bins = np.arange(0, x_limit + bin_size, bin_size)
-    
-    for command in command_types:
-        cmd_data = df[df['command_type'] == command]
-        if len(cmd_data) < 2:  # Skip if too few data points
-            continue
-        
-        times = cmd_data['event_elapsed_time'].values * 1000
-        plt.hist(times, bins=bins, alpha=0.3, label=command)
-    
-    plt.yscale('log')  # Use log scale for y-axis
-    plt.xlim(0, x_limit)
-    plt.title(f'{custom_title} - Combined Histogram of Event Time Deltas (ms)')
-    plt.xlabel('Time Elapsed (milliseconds)')
-    plt.ylabel('Frequency (Log Scale)')
-    plt.grid(axis='y', alpha=0.75, which='both')
-    plt.legend(loc='upper right', bbox_to_anchor=(0.95, 1))
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "combined_histogram.png"))
-    plt.close()
-
-# ---------------------------------------------------------------------
-# helper – distinct colours
-def _distinct_colors(n, sat=0.8, val=0.95):
-    hues = np.linspace(0, 1, n, endpoint=False)
-    return [mcolors.hsv_to_rgb((h, sat, val)) for h in hues]
-
-# ---------------------------------------------------------------------
-def plot_timeline_grouped(
-    df: pd.DataFrame,
-    output_dir: str,
-    custom_title: str | None = None,
-    point_size: float = 4,
-):
-    # 1 ── timestamps
-    df = df.copy()
-    df["ts"] = pd.to_datetime(df["timestamp"])
-
-    # 2 ── drop pre-loop rows
-    first_start = df.loc[
-        df["event"] == "runtime::main_control_loop::START", "ts"
-    ].min()
-    df = df[df["ts"] >= first_start]
-
-    # 3 ── iteration + offset (µs)
-    starts = df.loc[
-        df["event"] == "runtime::main_control_loop::START", "ts"
-    ].to_numpy()
-    df["iteration"] = np.searchsorted(starts, df["ts"].to_numpy(), side="right")
-    df["offset_us"] = (
-        (df["ts"] - starts[df["iteration"] - 1]) / pd.Timedelta(microseconds=1)
-    )
-
-
-    # 4 ── manual 8-panel grouping
-    groups = {
-        # ❶ – provider::trigger_actuator_read
-        "trigger_actuator_read": [
-            "provider::trigger_actuator_read::START",
-            "provider::trigger_actuator_read::END",
-        ],
-
-        # ❷ – provider::get_actuator_state
-        "get_actuator_state": [
-            "provider::get_actuator_state::START",
-            "provider::get_actuator_state::END",
-        ],
-
-        # ❸ – provider::get_joint_angles
-        "get_joint_angles": [
-            "provider::get_joint_angles::START",
-            "provider::get_joint_angles::END",
-        ],
-
-        # ❹ – provider::get_joint_angular_velocities
-        "get_joint_angular_velocities": [
-            "provider::get_joint_angular_velocities::START",
-            "provider::get_joint_angular_velocities::END",
-        ],
-
-        # ❺ – provider::get_projected_gravity
-        "get_projected_gravity": [
-            "provider::get_projected_gravity::START",
-            "provider::get_projected_gravity::END",
-        ],
-
-        # ❻ – runtime::model_runner_step
-        "model_runner_step": [
-            "runtime::model_runner_step::START",
-            "runtime::model_runner_step::END",
-        ],
-
-        # ❼ – runtime::main_control_loop
-        "main_control_loop": [
-            "runtime::main_control_loop::START",
-            "runtime::main_control_loop::END",
-        ],
-
-        # ❽ – ALL events (explicit, no wild-cards)
-        "ALL START vs ALL END": [
-            # START events
-            "provider::trigger_actuator_read::START",
-            "provider::get_actuator_state::START",
-            "provider::get_joint_angles::START",
-            "provider::get_joint_angular_velocities::START",
-            "provider::get_projected_gravity::START",
-            "runtime::model_runner_step::START",
-            "runtime::main_control_loop::START",
-
-            # END events
-            "provider::trigger_actuator_read::END",
-            "provider::get_actuator_state::END",
-            "provider::get_joint_angles::END",
-            "provider::get_joint_angular_velocities::END",
-            "provider::get_projected_gravity::END",
-            "runtime::model_runner_step::END",
-            "runtime::main_control_loop::END",
-        ],
-    }
-
-    # 5 ── warn about unmatched events
-    unmatched = set(df["event"].unique())
-    for pats in groups.values():
-        for pat in pats:
-            unmatched = {ev for ev in unmatched if pat not in ev}
-    if unmatched:
-        print("⚠️  Unmatched events (not plotted):")
-        for ev in sorted(unmatched):
-            print("   •", ev)
-
-    # 6 ── figure & axes (4 rows × 2 cols, taller canvas)
-    fig, axes = plt.subplots(4, 2, figsize=(18, 24), sharey=True)
-    axes = axes.flatten()
-
-    # colour palette large enough for every pattern separately
-    palette = _distinct_colors(sum(len(v) for v in groups.values()))
-    colour_iter = iter(palette)
-
-    for ax, (title, patterns) in zip(axes, groups.items()):
-        # build mask for this subplot
-        mask = df["event"].apply(lambda ev: any(pat in ev for pat in patterns))
-        if not mask.any():
-            ax.text(0.5, 0.5, "no data", ha="center", va="center")
-            ax.axis("off")
-            continue
-        
-        total_outliers = 0
-        
-        for pat in patterns:
-            sub = df[mask & df["event"].str.contains(pat)]
-            if sub.empty:
-                continue
-                
-            # Outlier removal using IQR method
-            offsets = sub["offset_us"].values
-            if len(offsets) > 10:  # Only remove outliers if we have enough data points
-                q1, q3 = np.percentile(offsets, [25, 75])
-                iqr = q3 - q1
-                #! Outlier bound is 4 * IQR
-                lower_bound = q1 - 4 * iqr
-                upper_bound = q3 + 4 * iqr
-                
-                # Count outliers
-                outlier_mask = (offsets < lower_bound) | (offsets > upper_bound)
-                num_outliers = np.sum(outlier_mask)
-                
-                # Filter out outliers
-                if num_outliers > 0:
-                    total_outliers += num_outliers
-                    sub = sub[~((sub["offset_us"] < lower_bound) | (sub["offset_us"] > upper_bound))]
-            
-            ax.scatter(
-                sub["offset_us"],
-                sub["iteration"],
-                s=point_size,
-                alpha=0.9,
-                rasterized=True,
-                label=pat,
-            )
-        
-        # Update title with outlier info if any were removed
-        panel_title = title
-        if total_outliers > 0:
-            panel_title += f" ({total_outliers} outliers removed)"
-            
-        ax.set_title(panel_title, fontsize="medium")
-        ax.set_xlabel("Offset (µs)")
-        ax.set_ylabel("Iteration #")
-        ax.legend(
-            loc="upper right",
-            fontsize="x-small",
-            frameon=True,
-            facecolor='white',
-            handlelength=1.0,
-            handletextpad=0.4,
-        )
-
-    # 7 ── final styling & save
-    fig.suptitle(
-        f"{custom_title } \n Time Offset from Main Control Loop Start" or "Firmware Event Timeline — 8-panel view", fontsize=16
-    )
-    fig.tight_layout(rect=[0, 0.03, 1, 0.96])
-
-    os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, "snake_plot_8panel.png")
-    fig.savefig(out_path, dpi=300)
-    plt.close(fig)
-    print(f"✅  Saved 8-panel snake plot → {os.path.abspath(out_path)}")
-
-def plot_relative_to_start(df, output_dir, custom_title):
+def find_outliers(df, output_dir=None):
     """
-    Create a histogram showing when events occur relative to their iteration's main_control_loop::START.
-    Events are grouped by command_type and colored differently.
+    Find instances where the main control loop elapsed time is more than 2 seconds off from the average.
+    Save outliers to a text file if output_dir is provided.
     """
-    command_types = df['event'].unique()
+    # Filter for main control loop events that have elapsed time data
+    main_loop_data = df[
+        (df['command_type'] == 'runtime::main_control_loop::') & 
+        (df['event_elapsed_time'].notna())
+    ].copy()
     
-    # Create a figure with two subplots - main plot and zoomed region
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), gridspec_kw={'height_ratios': [2, 1]})
-    
-    # Convert relative times to milliseconds for better visualization
-    all_times = df['relative_to_start'].values * 1000
-    
-    if len(all_times) == 0:
-        print("Warning: No relative timing data available")
+    if len(main_loop_data) == 0:
+        print("No main control loop events with elapsed time data found.")
         return
     
-    # Create bins for zoomed plot (18-22ms)
-    zoom_min, zoom_max = 18, 22
-    zoom_bins = np.linspace(zoom_min, zoom_max, 40)
+    # Calculate statistics
+    elapsed_times = main_loop_data['event_elapsed_time'].values
+    mean_time = np.mean(elapsed_times)
+    std_time = np.std(elapsed_times)
     
-    # Keep track of total outliers removed for ax1
-    total_ax1_outliers = 0
+    stats_text = f"\nMain Control Loop Timing Statistics:\n"
+    stats_text += f"Total events: {len(elapsed_times)}\n"
+    stats_text += f"Mean elapsed time: {mean_time:.6f} seconds\n"
+    stats_text += f"Standard deviation: {std_time:.6f} seconds\n"
+    stats_text += f"Min elapsed time: {np.min(elapsed_times):.6f} seconds\n"
+    stats_text += f"Max elapsed time: {np.max(elapsed_times):.6f} seconds\n"
+    stats_text += f"Min timestamp: {main_loop_data['timestamp'].min()}\n"
     
-    # Plot histograms for each command type on main subplot
-    for i, command in enumerate(command_types):
-        cmd_data = df[df['event'] == command]
-        if len(cmd_data) < 2:  # Skip if too few data points
-            continue
+    print(stats_text)
+    
+    # Find outliers (more than 5ms off from average)
+    threshold = 5*(10**-3)  # 5ms
+    outlier_mask = np.abs(elapsed_times - mean_time) > threshold
+    outliers = main_loop_data[outlier_mask].copy()
+    
+    if len(outliers) == 0:
+        no_outliers_text = f"\nNo outliers found (events more than {threshold} seconds from mean)\n"
+        print(no_outliers_text)
         
-        # Convert to milliseconds
-        times = cmd_data['relative_to_start'].values * 1000
+        # Still save the statistics even if no outliers
+        if output_dir:
+            outliers_file = os.path.join(output_dir, "outliers_analysis.txt")
+            with open(outliers_file, 'w') as f:
+                f.write("MAIN CONTROL LOOP OUTLIER ANALYSIS\n")
+                f.write("=" * 50 + "\n")
+                f.write(stats_text)
+                f.write(no_outliers_text)
+            print(f"Outlier analysis saved to {outliers_file}")
+        return
+    
+    outliers_text = f"\nFound {len(outliers)} outliers (more than {threshold} seconds from mean of {mean_time:.6f}s):\n"
+    outliers_text += "=" * 80 + "\n"
+    
+    print(outliers_text)
+    
+    # Sort outliers by how far they deviate from the mean
+    outliers['deviation_from_mean'] = np.abs(outliers['event_elapsed_time'] - mean_time)
+    outliers_sorted = outliers.sort_values('deviation_from_mean', ascending=False)
+    
+    detailed_outliers_text = ""
+    for idx, row in outliers_sorted.iterrows():
+        deviation = row['deviation_from_mean']
+        elapsed = row['event_elapsed_time']
+        iteration = row.get('iteration', 'N/A')
+        timestamp = row['timestamp']
+        uuid = row['uuid']
         
-        #* Apply outlier filtering for ax1 - DISABLED
-        # if len(times) > 10:
-        #     q1, q3 = np.percentile(times, [25, 75])
-        #     iqr = q3 - q1
-        #     # Set multiplier to very large number to effectively disable filtering
-        #     lower_bound = q1 - 1000000 * iqr
-        #     upper_bound = q3 + 1000000 * iqr
-        #     
-        #     outlier_mask = (times < lower_bound) | (times > upper_bound)
-        #     num_outliers = np.sum(outlier_mask)
-        #     total_ax1_outliers += num_outliers
-        #     
-        #     # Filter out outliers for plotting
-        #     filtered_times = times[~outlier_mask]
-        # else:
-        #     filtered_times = times
+        outlier_detail = f"Iteration {iteration}:\n"
+        outlier_detail += f"  Timestamp: {timestamp}\n"
+        outlier_detail += f"  UUID: {uuid}\n"
+        outlier_detail += f"  Elapsed time: {elapsed:.6f}s\n"
+        outlier_detail += f"  Deviation from mean: {deviation/mean_time*100:.1f}% of mean\n"
+        outlier_detail += "-" * 40 + "\n"
         
-        #* No filtering - use all data points
-        filtered_times = times
+        print(outlier_detail)
+        detailed_outliers_text += outlier_detail
+    
+    # Additional analysis
+    high_outliers = outliers[outliers['event_elapsed_time'] > mean_time]
+    low_outliers = outliers[outliers['event_elapsed_time'] < mean_time]
+    
+    analysis_text = f"\nOutlier Analysis:\n"
+    analysis_text += f"Percentage of events that are outliers: {len(outliers)/len(elapsed_times)*100:.2f}%\n"
+    analysis_text += f"High outliers (above mean): {len(high_outliers)}\n"
+    analysis_text += f"Low outliers (below mean): {len(low_outliers)}\n"
+    
+    if len(high_outliers) > 0:
+        analysis_text += f"Highest outlier: {np.max(high_outliers['event_elapsed_time']):.6f}s\n"
+    if len(low_outliers) > 0:
+        analysis_text += f"Lowest outlier: {np.min(low_outliers['event_elapsed_time']):.6f}s\n"
+    
+    print(analysis_text)
+    
+    # Save to file if output directory is provided
+    if output_dir:
+        outliers_file = os.path.join(output_dir, "outliers_analysis.txt")
+        with open(outliers_file, 'w') as f:
+            f.write("MAIN CONTROL LOOP OUTLIER ANALYSIS\n")
+            f.write("=" * 50 + "\n")
+            f.write(stats_text)
+            f.write(outliers_text)
+            f.write(detailed_outliers_text)
+            f.write(analysis_text)
+        
+        print(f"Outlier analysis saved to {outliers_file}")
 
-        max_time = np.max(filtered_times)
-        x_limit = max(1.0, max_time * 1.1)  # Ensure at least 0-1ms range
-        
-        # Create bins from 0 to max value for main plot
-        num_bins = min(200, max(91, int(x_limit*10)+1))  # Reasonable number of bins
-        bins = np.linspace(0, x_limit, num_bins)
-    
-        # Plot on main subplot with filtered data
-        ax1.hist(filtered_times, bins=bins, alpha=0.3, label=command)
-    
-    # For zoomed view, use a different approach - plot each command type separately without overlap
-    zoom_range = (zoom_min, zoom_max)
-    ax2.set_xlim(*zoom_range)
-    
-    # Number of commands to display in zoomed view
+def plot_main_histogram(ax, filtering_stats, bins, command_types):
+    for command in command_types:
+        if command not in filtering_stats:
+            continue
+        stats = filtering_stats[command]
+        filtered_times = stats['filtered_times']
+        ax.hist(filtered_times, bins=bins, alpha=0.3, label=command)
+    ax.set_yscale('log')
+    ax.set_ylabel('Frequency (Log Scale)')
+    ax.grid(axis='y', alpha=0.75, which='both')
+    ax.legend(loc='upper center', fontsize='small')
+
+def plot_zoomed_histogram(ax, filtering_stats, command_types, zoom_min, zoom_max, zoom_bins):
+    ax.set_xlim(zoom_min, zoom_max)
     filtered_commands = []
     for cmd in command_types:
-        cmd_data = df[df['event'] == cmd]
-        times = cmd_data['relative_to_start'].values * 1000
-        zoom_times = times[(times >= zoom_min) & (times <= zoom_max)]
+        if cmd not in filtering_stats:
+            continue
+        filtered_times = filtering_stats[cmd]['filtered_times']
+        zoom_times = filtered_times[(filtered_times >= zoom_min) & (filtered_times <= zoom_max)]
         if len(zoom_times) > 0:
             filtered_commands.append((cmd, zoom_times))
-    
-    # Sort commands by their median time in the zoom range
     filtered_commands.sort(key=lambda x: np.median(x[1]))
-    
-    # For zoomed view, use side-by-side bars instead of overlapping histograms
     if filtered_commands:
         num_cmds = len(filtered_commands)
         offsets = np.linspace(-0.4, 0.4, num_cmds)
-        width = 0.8 / num_cmds  # Adjust bar width based on command count
-        
+        width = 0.8 / num_cmds
         for i, (command, zoom_times) in enumerate(filtered_commands):
-            # Create histogram data
             counts, edges = np.histogram(zoom_times, bins=zoom_bins)
-            # Plot as bars, slightly offset from each other
             centers = (edges[:-1] + edges[1:]) / 2
-            idx = command_types.tolist().index(command)
-            ax2.bar(centers + offsets[i] * width, counts, width=width * 0.9, 
-                   alpha=0.8, label=command)
-    
-    # Configure main subplot
-    ax1.set_yscale('log')  # Use log scale for y-axis
-    ax1.set_xlim(0, x_limit)
-    title_with_outliers = f'{custom_title} - Event Timing Relative to Control Loop Start'
-    title_with_outliers += f' ({total_ax1_outliers} outliers removed)'
-    ax1.set_title(title_with_outliers)
-    ax1.set_ylabel('Frequency (Log Scale)')
-    ax1.grid(axis='y', alpha=0.75, which='both')
-    ax1.legend(loc='upper right', fontsize='small')
-    
-    # Configure zoomed subplot
-    ax2.set_yscale('log')  # Use log scale for y-axis
-    ax2.set_xlabel('Time Since main_control_loop START (milliseconds)')
-    ax2.set_ylabel('Frequency (Log Scale)')
-    ax2.set_title(f'Zoom View: {zoom_min}-{zoom_max}ms Range')
-    ax2.grid(axis='y', alpha=0.75, which='both')
-    
-    # Handle legend - if many command types, make it more compact
+            ax.bar(centers + offsets[i] * width, counts, width=width * 0.9, alpha=0.8, label=command)
+    ax.set_yscale('log')
+    ax.set_xlabel('Time Since main_control_loop START (milliseconds)')
+    ax.set_ylabel('Frequency (Log Scale)')
+    ax.set_title(f'Zoom View: {zoom_min}-{zoom_max}ms Range (Filtered Data)')
+    ax.grid(axis='y', alpha=0.75, which='both')
     if len(filtered_commands) > 10:
-        ax2.legend(loc='upper right', bbox_to_anchor=(0.95, 1), 
-                   fontsize='small', ncol=2)
+        ax.legend(loc='upper right', bbox_to_anchor=(0.95, 1), fontsize='small', ncol=2)
     else:
-        ax2.legend(loc='upper right', bbox_to_anchor=(0.95, 1))
+        ax.legend(loc='upper right', bbox_to_anchor=(0.95, 1))
+
+def plot_outliers(ax, df):
+    """
+    Find slow main_control_loop iterations and create a stacked bar chart showing
+    the breakdown of time spent in different events for each outlier iteration.
+    """
+    threshold_ms = 21.0
+
+    # Which main_control_loop iterations are slow?
+    mask_outlier_cl_end = (
+        (df['event'] == 'runtime::main_control_loop::END') &
+        (df['relative_to_start'] * 1000 > threshold_ms)
+    )
+    outlier_rows = df[mask_outlier_cl_end]
+
+    if outlier_rows.empty:
+        ax.text(0.5, 0.5, "No main_control_loop events > threshold",
+                ha='center', va='center', fontsize=14)
+        ax.axis('off')
+        return []
     
+    # Get all outlier UUIDs at once
+    outlier_uuids = set(outlier_rows['uuid'].tolist())
+    
+    # Single mask to get all START events for outlier UUIDs
+    start_events_mask = (
+        (df['event'] == 'runtime::main_control_loop::START') &
+        (df['uuid'].isin(outlier_uuids))
+    )
+    start_events = df[start_events_mask].set_index('uuid')
+    
+    # Group events by iteration for all outlier iterations at once
+    outlier_dataframes = []
+    
+    for _, end_event in outlier_rows.iterrows():
+        end_uuid = end_event['uuid']
+        end_iteration = end_event['iteration']
+        
+        if end_uuid not in start_events.index:
+            print(f"Warning: No START event found for END event with UUID {end_uuid}")
+            continue
+            
+        start_event = start_events.loc[end_uuid]
+        
+        # Get all events in this iteration between START and END timestamps
+        iteration_events_mask = (
+            (df['iteration'] == end_iteration) &
+            (df['timestamp'] >= start_event['timestamp']) &
+            (df['timestamp'] <= end_event['timestamp'])
+        )
+        
+        events_in_iteration = df[iteration_events_mask].sort_values('timestamp').copy()
+        outlier_dataframes.append(events_in_iteration)
+    
+    # Create stacked bar chart
+    if not outlier_dataframes:
+        ax.text(0.5, 0.5, "No valid outlier iterations found",
+                ha='center', va='center', fontsize=14)
+        ax.axis('off')
+        return outlier_dataframes
+    
+    # Prepare data for stacked bar chart
+    bar_data = []
+    bar_labels = []
+    total_times = []
+    
+    for i, iteration_df in enumerate(outlier_dataframes):
+        # Get the main control loop total time
+        main_start = iteration_df[iteration_df['event'] == 'runtime::main_control_loop::START']
+        main_end = iteration_df[iteration_df['event'] == 'runtime::main_control_loop::END']
+        
+        if main_start.empty or main_end.empty:
+            continue
+            
+        total_time_ms = (main_end.iloc[0]['timestamp'] - main_start.iloc[0]['timestamp']).total_seconds() * 1000
+        iteration_num = main_start.iloc[0]['iteration']
+        
+        # Calculate time breakdown for events with elapsed time data
+        # EXCLUDE the main_control_loop itself since that's the total
+        event_times = {}
+        events_with_time = iteration_df[iteration_df['event_elapsed_time'].notna()]
+        
+        for _, event in events_with_time.iterrows():
+            event_name = event['event']
+            if event_name.endswith('::END') and not event_name.startswith('runtime::main_control_loop::'):
+                # Get the base event name (remove ::END)
+                base_event = event_name.replace('::END', '')
+                elapsed_time_ms = event['event_elapsed_time'] * 1000
+                event_times[base_event] = elapsed_time_ms
+        
+        # Calculate unaccounted time (time not attributed to any specific sub-event)
+        accounted_time = sum(event_times.values())
+        unaccounted_time = max(0, total_time_ms - accounted_time)
+        
+        if unaccounted_time > 0:
+            event_times['unaccounted'] = unaccounted_time
+        
+        bar_data.append(event_times)
+        bar_labels.append(f"Iter {iteration_num}\n({total_time_ms:.1f}ms)")
+        total_times.append(total_time_ms)
+    
+    if not bar_data:
+        ax.text(0.5, 0.5, "No events with timing data found",
+                ha='center', va='center', fontsize=14)
+        ax.axis('off')
+        return outlier_dataframes
+    
+    # Get all unique event types across all iterations (excluding main_control_loop)
+    all_events = set()
+    for events in bar_data:
+        all_events.update(events.keys())
+    all_events = sorted(list(all_events))
+    
+    # Create color map for events
+    colors = plt.cm.Set3(np.linspace(0, 1, len(all_events)))
+    color_map = dict(zip(all_events, colors))
+    
+    # Create stacked bars
+    x_positions = range(len(bar_data))
+    bottom_values = np.zeros(len(bar_data))
+    
+    for event in all_events:
+        heights = []
+        for events in bar_data:
+            heights.append(events.get(event, 0))
+        
+        ax.bar(x_positions, heights, bottom=bottom_values, 
+               label=event, color=color_map[event], alpha=0.8)
+        bottom_values += np.array(heights)
+    
+    # Customize the plot
+    ax.set_xlabel('Outlier Iterations')
+    ax.set_ylabel('Time (milliseconds)')
+    ax.set_title(f'Time Breakdown for Slow Control Loop Iterations (>{threshold_ms}ms)')
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(bar_labels, rotation=45, ha='right')
+    
+    # Add legend
+    if len(all_events) > 10:
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+    else:
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    # Add grid for better readability
+    ax.grid(axis='y', alpha=0.3)
+    
+    # Add total time annotations on top of bars (should match the main_control_loop time)
+    for i, (pos, calculated_total, actual_total) in enumerate(zip(x_positions, bottom_values, total_times)):
+        ax.annotate(f'{actual_total:.1f}ms', 
+                   xy=(pos, actual_total), 
+                   xytext=(0, 3), 
+                   textcoords='offset points',
+                   ha='center', va='bottom',
+                   fontsize=8, fontweight='bold')
+        
+        # Verify that our stacked components add up to the main control loop time
+        if abs(calculated_total - actual_total) > 0.1:  # Allow small floating point differences
+            print(f"Warning: Iteration {bar_labels[i]} - calculated total ({calculated_total:.1f}ms) "
+                  f"doesn't match main_control_loop time ({actual_total:.1f}ms)")
+    
+    return outlier_dataframes
+
+def plot_performance(df, output_dir, custom_title):
+    command_types = df['event'].unique()
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(20, 15), gridspec_kw={'height_ratios': [2, 1, 2]})
+
+    all_times = df['relative_to_start'].values * 1000
+    if len(all_times) == 0:
+        print("Warning: No relative timing data available")
+        return
+
+    zoom_min, zoom_max = 18, 22
+    zoom_bins = np.linspace(zoom_min, zoom_max, 40)
+    timeout_threshold_ms = 30.0
+
+    total_original_events = 0
+    total_timeout_filtered = 0
+    total_remaining_events = 0
+    filtering_stats = {}
+    all_filtered_times = []
+
+    for command in command_types:
+        cmd_data = df[df['event'] == command]
+        if len(cmd_data) < 2:
+            continue
+        times = cmd_data['relative_to_start'].values * 1000
+        original_count = len(times)
+        total_original_events += original_count
+        timeout_mask = times > timeout_threshold_ms
+        timeout_filtered_count = np.sum(timeout_mask)
+        filtered_times = times[~timeout_mask]
+        remaining_count = len(filtered_times)
+        filtering_stats[command] = {
+            'original': original_count,
+            'timeout_filtered': timeout_filtered_count,
+            'remaining': remaining_count,
+            'timeout_percentage': (timeout_filtered_count / original_count * 100) if original_count > 0 else 0,
+            'filtered_times': filtered_times
+        }
+        total_timeout_filtered += timeout_filtered_count
+        total_remaining_events += remaining_count
+        all_filtered_times.extend(filtered_times)
+
+    if len(all_filtered_times) > 0:
+        filtered_max_time = np.max(all_filtered_times)
+        filtered_min_time = np.min(all_filtered_times)
+        x_limit = max(1.0, filtered_max_time * 1.05)
+        x_min = max(0.0, filtered_min_time * 0.95)
+        num_bins = min(200, max(50, int((x_limit - x_min) * 10) + 1))
+        bins = np.linspace(x_min, x_limit, num_bins)
+    else:
+        x_limit = 1.0
+        x_min = 0.0
+        bins = np.linspace(0, 1, 50)
+
+    # Call subfunctions for each axis
+    plot_main_histogram(ax1, filtering_stats, bins, command_types)
+    ax1.set_xlim(x_min, x_limit)
+    title_with_filtering = f'{custom_title} - Event Timing Relative to Control Loop Start'
+    title_with_filtering += f'\n(Timeout: {total_timeout_filtered} filtered, {total_remaining_events} remaining)'
+    ax1.set_title(title_with_filtering)
+
+    plot_zoomed_histogram(ax2, filtering_stats, command_types, zoom_min, zoom_max, zoom_bins)
+    plot_outliers(ax3, df)
+
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "relative_to_start_histogram.png"), dpi=300)
     plt.close()
-    
     print(f"Relative timing histogram saved → {os.path.join(output_dir, 'relative_to_start_histogram.png')}")
+
+
 
 def main():
     parser = argparse.ArgumentParser("Plot title")
@@ -508,11 +492,9 @@ def main():
     df = df_calc_rel_start(df)
     df = df_calc_pair(df)
 
-    plot_histograms(df, output_dir, custom_title)
-    plot_timeline_grouped(df, output_dir, custom_title)
-    plot_relative_to_start(df, output_dir, custom_title)
-    plot_combined_histograms(df, output_dir, custom_title)
+    find_outliers(df, output_dir)
 
+    plot_performance(df, output_dir, custom_title)
 
     shutil.copy(f"logs/{parser.parse_args().file_path}", os.path.join(output_dir, f"{custom_title}_{parser.parse_args().file_path}"))
 
