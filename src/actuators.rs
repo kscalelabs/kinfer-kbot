@@ -208,7 +208,7 @@ impl Actuator {
         for id in actuator_ids {
             if let Ok(Some((feedback, _))) = supervisor.get_feedback(id as u8).await {
                 responses.push(ActuatorState {
-                    actuator_id: id as u32,
+                    actuator_id: id,
                     online: true,
                     position: Some(feedback.angle as f64),
                     velocity: Some(feedback.velocity as f64),
@@ -218,7 +218,7 @@ impl Actuator {
             } else {
                 tracing::warn!("No feedback or error for actuator ID: {}", id);
                 responses.push(ActuatorState {
-                    actuator_id: id as u32,
+                    actuator_id: id,
                     online: false,
                     position: None,
                     velocity: None,

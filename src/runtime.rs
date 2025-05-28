@@ -1,12 +1,12 @@
 use ::kinfer::model::{ModelError, ModelRunner};
+use ::ndarray::Array;
 use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
 use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 
-use crate::actuators::ActuatorCommand;
-use crate::constants::HOME_POSITION;
+use crate::constants::ACTUATOR_NAME_TO_ID;
 use crate::provider::KBotProvider;
 
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -82,10 +82,24 @@ impl ModelRuntime {
                 .init()
                 .await
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
-            let mut joint_positions = model_runner
-                .get_joint_angles()
-                .await
-                .map_err(|e| ModelError::Provider(e.to_string()))?;
+
+            // Get initial joint positions directly from actuator state
+            let mut joint_positions = {
+                let actuator_ids = ACTUATOR_NAME_TO_ID
+                    .iter()
+                    .map(|(_, id)| *id)
+                    .collect::<Vec<u32>>();
+                let actuator_states = model_provider.get_actuator_state(&actuator_ids).await?;
+
+                let joint_angles: Vec<f32> = actuator_states
+                    .iter()
+                    .map(|state| state.position.map(|p| p as f32).unwrap_or(0.0))
+                    .collect();
+
+                Array::from_shape_vec((joint_angles.len(),), joint_angles)
+                    .map_err(|e| ModelError::Provider(e.to_string()))?
+                    .into_dyn()
+            };
 
             // Wait for the first tick, since it happens immediately.
             let mut read_interval = interval(dt);
