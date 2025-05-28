@@ -80,7 +80,7 @@ impl KBotProvider {
             .collect::<Result<Vec<u32>, _>>()
     }
 
-    async fn get_actuator_state(
+    pub async fn get_actuator_state(
         &self,
         actuator_ids: &[u32],
     ) -> Result<Vec<ActuatorState>, ModelError> {
@@ -132,10 +132,12 @@ impl ModelProvider for KBotProvider {
 
         // Read values from hardware once
         let actuator_ids = self.get_actuator_ids(&meta.joint_names)?;
-        let act_state = self.get_actuator_state(&actuator_ids).await?;
-        let imu_values = self.imu.get_values().await.map_err(|e| {
-            ModelError::Provider(format!("Failed to get IMU values: {}", e.to_string()))
-        })?;
+        let (act_state, imu_values) =
+            tokio::try_join!(self.get_actuator_state(&actuator_ids), async {
+                self.imu.get_values().await.map_err(|e| {
+                    ModelError::Provider(format!("Failed to get IMU values: {}", e.to_string()))
+                })
+            })?;
 
         // Populate the requested slots
         let mut out = HashMap::with_capacity(input_types.len());
