@@ -5,8 +5,6 @@ use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 
-use crate::actuators::ActuatorCommand;
-use crate::constants::HOME_POSITION;
 use crate::provider::KBotProvider;
 
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -82,10 +80,20 @@ impl ModelRuntime {
                 .init()
                 .await
                 .map_err(|e| ModelError::Provider(e.to_string()))?;
-            let mut joint_positions = model_runner
-                .get_joint_angles()
-                .await
-                .map_err(|e| ModelError::Provider(e.to_string()))?;
+
+            // Get initial joint positions using the new API
+            let mut joint_positions = {
+                let inputs = model_runner
+                    .get_inputs(&[::kinfer::InputType::JointAngles])
+                    .await
+                    .map_err(|e| ModelError::Provider(e.to_string()))?;
+                inputs
+                    .get(&::kinfer::InputType::JointAngles)
+                    .ok_or_else(|| {
+                        ModelError::Provider("Joint angles not found in inputs".to_string())
+                    })?
+                    .clone()
+            };
 
             // Wait for the first tick, since it happens immediately.
             let mut read_interval = interval(dt);

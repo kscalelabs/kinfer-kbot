@@ -1,7 +1,8 @@
 use ::async_trait::async_trait;
 use ::imu::{Quaternion, Vector3};
-use ::kinfer::{ModelError, ModelProvider};
+use ::kinfer::{InputType, ModelError, ModelMetadata, ModelProvider};
 use ::ndarray::{Array, IxDyn};
+use ::std::collections::HashMap;
 use ::std::time::{Duration, Instant};
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
@@ -11,6 +12,7 @@ use crate::imu::IMU;
 pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
+    start_time: Instant,
 }
 
 impl KBotProvider {
@@ -58,7 +60,11 @@ impl KBotProvider {
             }
         }
 
-        Ok(Self { actuators, imu })
+        Ok(Self {
+            actuators,
+            imu,
+            start_time: Instant::now(),
+        })
     }
 
     fn get_actuator_ids(&self, joint_names: &[String]) -> Result<Vec<u32>, ModelError> {
@@ -117,135 +123,114 @@ impl KBotProvider {
 
 #[async_trait]
 impl ModelProvider for KBotProvider {
-    async fn get_joint_angles(
+    async fn get_inputs(
         &self,
-        joint_names: &[String],
-    ) -> Result<Array<f32, IxDyn>, ModelError> {
-        let actuator_ids = self.get_actuator_ids(joint_names)?;
-        let actuator_state = self.get_actuator_state(&actuator_ids).await?;
+        input_types: &[InputType],
+        metadata: &ModelMetadata,
+    ) -> Result<HashMap<InputType, Array<f32, IxDyn>>, ModelError> {
+        let mut inputs = HashMap::new();
 
-        let joint_angles = actuator_state
-            .iter()
-            .enumerate()
-            .map(|(idx, state)| {
-                state.position.map(|p| p as f32).ok_or_else(|| {
-                    let joint_name_for_error = joint_names.get(idx).map_or_else(
-                        || format!("<unknown joint at index {}>", idx),
-                        |s: &String| s.to_string(),
-                    );
-                    ModelError::Provider(format!(
-                        "Position not available for joint ID {} (name: {})",
-                        state.actuator_id, joint_name_for_error
-                    ))
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        // Cache actuator state and IMU values to avoid duplicate reads
+        let mut cached_actuator_state: Option<Vec<ActuatorState>> = None;
+        let mut cached_imu_values: Option<crate::imu::IMUData> = None;
 
-        Ok(Array::from_shape_vec((joint_names.len(),), joint_angles)
-            .map_err(|e| ModelError::Provider(e.to_string()))?
-            .into_dyn())
-    }
-
-    async fn get_joint_angular_velocities(
-        &self,
-        joint_names: &[String],
-    ) -> Result<Array<f32, IxDyn>, ModelError> {
-        let actuator_ids = self.get_actuator_ids(joint_names)?;
-        let actuator_state = self.get_actuator_state(&actuator_ids).await?;
-
-        let joint_angular_velocities: Vec<f32> = actuator_state
-            .iter()
-            .enumerate()
-            .map(|(idx, state)| {
-                state.velocity.map(|v| v as f32).ok_or_else(|| {
-                    let joint_name_for_error = joint_names.get(idx).map_or_else(
-                        || format!("<unknown joint at index {}>", idx),
-                        |s: &String| s.to_string(),
-                    );
-                    ModelError::Provider(format!(
-                        "Velocity data not available (is None) for joint ID {} (name: {})",
-                        state.actuator_id, joint_name_for_error
-                    ))
-                })
-            })
-            .collect::<Result<Vec<f32>, ModelError>>()?;
-
-        Ok(
-            Array::from_shape_vec((joint_names.len(),), joint_angular_velocities)
-                .map_err(|e| ModelError::Provider(e.to_string()))?
-                .into_dyn(),
-        )
-    }
-
-    async fn get_projected_gravity(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        let values = self
-            .imu
-            .get_values()
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
-        let projected_gravity = Quaternion {
-            x: values.quat_x,
-            y: values.quat_y,
-            z: values.quat_z,
-            w: values.quat_w,
+        for input_type in input_types {
+            match input_type {
+                InputType::JointAngles => {
+                    if cached_actuator_state.is_none() {
+                        let actuator_ids = self.get_actuator_ids(&metadata.joint_names)?;
+                        cached_actuator_state = Some(self.get_actuator_state(&actuator_ids).await?);
+                    }
+                    let joint_angles = self.get_joint_angles_from_state(
+                        &metadata.joint_names,
+                        cached_actuator_state.as_ref().unwrap(),
+                    )?;
+                    inputs.insert(InputType::JointAngles, joint_angles);
+                }
+                InputType::JointAngularVelocities => {
+                    if cached_actuator_state.is_none() {
+                        let actuator_ids = self.get_actuator_ids(&metadata.joint_names)?;
+                        cached_actuator_state = Some(self.get_actuator_state(&actuator_ids).await?);
+                    }
+                    let joint_velocities = self.get_joint_angular_velocities_from_state(
+                        &metadata.joint_names,
+                        cached_actuator_state.as_ref().unwrap(),
+                    )?;
+                    inputs.insert(InputType::JointAngularVelocities, joint_velocities);
+                }
+                InputType::ProjectedGravity => {
+                    if cached_imu_values.is_none() {
+                        cached_imu_values = Some(
+                            self.imu
+                                .get_values()
+                                .await
+                                .map_err(|e| ModelError::Provider(e.to_string()))?,
+                        );
+                    }
+                    let projected_gravity = self
+                        .get_projected_gravity_from_values(cached_imu_values.as_ref().unwrap())?;
+                    inputs.insert(InputType::ProjectedGravity, projected_gravity);
+                }
+                InputType::Accelerometer => {
+                    if cached_imu_values.is_none() {
+                        cached_imu_values = Some(
+                            self.imu
+                                .get_values()
+                                .await
+                                .map_err(|e| ModelError::Provider(e.to_string()))?,
+                        );
+                    }
+                    let accelerometer =
+                        self.get_accelerometer_from_values(cached_imu_values.as_ref().unwrap())?;
+                    inputs.insert(InputType::Accelerometer, accelerometer);
+                }
+                InputType::Gyroscope => {
+                    if cached_imu_values.is_none() {
+                        cached_imu_values = Some(
+                            self.imu
+                                .get_values()
+                                .await
+                                .map_err(|e| ModelError::Provider(e.to_string()))?,
+                        );
+                    }
+                    let gyroscope =
+                        self.get_gyroscope_from_values(cached_imu_values.as_ref().unwrap())?;
+                    inputs.insert(InputType::Gyroscope, gyroscope);
+                }
+                InputType::Command => {
+                    let command = self.get_command_internal(metadata)?;
+                    inputs.insert(InputType::Command, command);
+                }
+                InputType::Time => {
+                    // Use proper time calculation from start_time
+                    let time_value = (Instant::now() - self.start_time).as_secs_f32();
+                    let time_array = Array::from_shape_vec((1,), vec![time_value])
+                        .map_err(|e| ModelError::Provider(e.to_string()))?
+                        .into_dyn();
+                    inputs.insert(InputType::Time, time_array);
+                }
+                InputType::Carry => {
+                    // Carry is handled separately in the step function
+                    // This shouldn't be requested through get_inputs
+                    return Err(ModelError::Provider(
+                        "Carry input should not be requested through get_inputs".to_string(),
+                    ));
+                }
+            }
         }
-        .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
-        Ok(Array::from_shape_vec(
-            (3,),
-            vec![
-                projected_gravity.x,
-                projected_gravity.y,
-                projected_gravity.z,
-            ],
-        )
-        .map_err(|e| ModelError::Provider(e.to_string()))?
-        .into_dyn())
-    }
 
-    async fn get_accelerometer(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        let values = self
-            .imu
-            .get_values()
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
-        let accel_x = values.accel_x as f32;
-        let accel_y = values.accel_y as f32;
-        let accel_z = values.accel_z as f32;
-        Ok(Array::from_shape_vec((3,), vec![accel_x, accel_y, accel_z])
-            .map_err(|e| ModelError::Provider(e.to_string()))?
-            .into_dyn())
-    }
-
-    async fn get_gyroscope(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        let values = self
-            .imu
-            .get_values()
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
-        let gyro_x = values.gyro_x as f32;
-        let gyro_y = values.gyro_y as f32;
-        let gyro_z = values.gyro_z as f32;
-        Ok(Array::from_shape_vec((3,), vec![gyro_x, gyro_y, gyro_z])
-            .map_err(|e| ModelError::Provider(e.to_string()))?
-            .into_dyn())
-    }
-
-    async fn get_command(&self) -> Result<Array<f32, IxDyn>, ModelError> {
-        Err(ModelError::Provider("Not implemented".to_string()))
-    }
-
-    async fn get_carry(&self, carry: Array<f32, IxDyn>) -> Result<Array<f32, IxDyn>, ModelError> {
-        Ok(carry)
+        Ok(inputs)
     }
 
     async fn take_action(
         &self,
-        joint_names: Vec<String>,
         action: Array<f32, IxDyn>,
+        metadata: &ModelMetadata,
     ) -> Result<(), ModelError> {
-        assert_eq!(joint_names.len(), action.len());
+        let joint_names_from_metadata = &metadata.joint_names;
+        assert_eq!(joint_names_from_metadata.len(), action.len());
 
-        let commands: Vec<ActuatorCommand> = joint_names
+        let commands: Vec<ActuatorCommand> = joint_names_from_metadata
             .iter()
             .zip(action.iter())
             .map(|(name, action_value)| {
@@ -274,8 +259,126 @@ impl ModelProvider for KBotProvider {
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
 
-        println!("took action {:?} at time {:?}", action, Instant::now());
+        tracing::debug!("took action {:?} at time {:?}", action, Instant::now());
 
         Ok(())
+    }
+}
+
+impl KBotProvider {
+    // Internal methods for getting specific input types
+    fn get_joint_angles_from_state(
+        &self,
+        joint_names: &[String],
+        actuator_state: &[ActuatorState],
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let joint_angles = actuator_state
+            .iter()
+            .enumerate()
+            .map(|(idx, state)| {
+                state.position.map(|p| p as f32).ok_or_else(|| {
+                    let joint_name_for_error = joint_names.get(idx).map_or_else(
+                        || format!("<unknown joint at index {}>", idx),
+                        |s: &String| s.to_string(),
+                    );
+                    ModelError::Provider(format!(
+                        "Position not available for joint ID {} (name: {})",
+                        state.actuator_id, joint_name_for_error
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Array::from_shape_vec((joint_names.len(),), joint_angles)
+            .map_err(|e| ModelError::Provider(e.to_string()))?
+            .into_dyn())
+    }
+
+    fn get_joint_angular_velocities_from_state(
+        &self,
+        joint_names: &[String],
+        actuator_state: &[ActuatorState],
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let joint_angular_velocities: Vec<f32> = actuator_state
+            .iter()
+            .enumerate()
+            .map(|(idx, state)| {
+                state.velocity.map(|v| v as f32).ok_or_else(|| {
+                    let joint_name_for_error = joint_names.get(idx).map_or_else(
+                        || format!("<unknown joint at index {}>", idx),
+                        |s: &String| s.to_string(),
+                    );
+                    ModelError::Provider(format!(
+                        "Velocity data not available (is None) for joint ID {} (name: {})",
+                        state.actuator_id, joint_name_for_error
+                    ))
+                })
+            })
+            .collect::<Result<Vec<f32>, ModelError>>()?;
+
+        Ok(
+            Array::from_shape_vec((joint_names.len(),), joint_angular_velocities)
+                .map_err(|e| ModelError::Provider(e.to_string()))?
+                .into_dyn(),
+        )
+    }
+
+    fn get_projected_gravity_from_values(
+        &self,
+        imu_values: &crate::imu::IMUData,
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let projected_gravity = Quaternion {
+            x: imu_values.quat_x,
+            y: imu_values.quat_y,
+            z: imu_values.quat_z,
+            w: imu_values.quat_w,
+        }
+        .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
+        Ok(Array::from_shape_vec(
+            (3,),
+            vec![
+                projected_gravity.x,
+                projected_gravity.y,
+                projected_gravity.z,
+            ],
+        )
+        .map_err(|e| ModelError::Provider(e.to_string()))?
+        .into_dyn())
+    }
+
+    fn get_accelerometer_from_values(
+        &self,
+        imu_values: &crate::imu::IMUData,
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let accel_x = imu_values.accel_x;
+        let accel_y = imu_values.accel_y;
+        let accel_z = imu_values.accel_z;
+        Ok(Array::from_shape_vec((3,), vec![accel_x, accel_y, accel_z])
+            .map_err(|e| ModelError::Provider(e.to_string()))?
+            .into_dyn())
+    }
+
+    fn get_gyroscope_from_values(
+        &self,
+        imu_values: &crate::imu::IMUData,
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let gyro_x = imu_values.gyro_x;
+        let gyro_y = imu_values.gyro_y;
+        let gyro_z = imu_values.gyro_z;
+        Ok(Array::from_shape_vec((3,), vec![gyro_x, gyro_y, gyro_z])
+            .map_err(|e| ModelError::Provider(e.to_string()))?
+            .into_dyn())
+    }
+
+    fn get_command_internal(
+        &self,
+        metadata: &ModelMetadata,
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
+        // For now, return zeros for command input
+        let num_commands = metadata.num_commands.unwrap_or(0);
+        let command_values = vec![0.0f32; num_commands];
+        Ok(Array::from_shape_vec((num_commands,), command_values)
+            .map_err(|e| ModelError::Provider(e.to_string()))?
+            .into_dyn())
     }
 }
