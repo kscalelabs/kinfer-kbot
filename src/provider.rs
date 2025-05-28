@@ -131,13 +131,17 @@ impl ModelProvider for KBotProvider {
         use InputType::*;
 
         // Read values from hardware once
-        let actuator_ids = self.get_actuator_ids(&meta.joint_names)?;
-        let (act_state, imu_values) =
-            tokio::try_join!(self.get_actuator_state(&actuator_ids), async {
+        let (act_state, imu_values) = tokio::try_join!(
+            async {
+                let actuator_ids = self.get_actuator_ids(&meta.joint_names)?;
+                self.get_actuator_state(&actuator_ids).await
+            },
+            async {
                 self.imu.get_values().await.map_err(|e| {
                     ModelError::Provider(format!("Failed to get IMU values: {}", e.to_string()))
                 })
-            })?;
+            }
+        )?;
 
         // Populate the requested slots
         let mut out = HashMap::with_capacity(input_types.len());
