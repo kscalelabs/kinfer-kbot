@@ -131,10 +131,11 @@ impl ModelProvider for KBotProvider {
         use InputType::*;
 
         // Read values from hardware once
-        let actuator_ids  = self.get_actuator_ids(&meta.joint_names)?;
-        let act_state     = self.get_actuator_state(&actuator_ids).await?;
-        let imu_values    = self.imu.get_values().await
-                               .map_err(|e| ModelError::Provider(e.to_string()))?;
+        let actuator_ids = self.get_actuator_ids(&meta.joint_names)?;
+        let act_state = self.get_actuator_state(&actuator_ids).await?;
+        let imu_values = self.imu.get_values().await.map_err(|e| {
+            ModelError::Provider(format!("Failed to get IMU values: {}", e.to_string()))
+        })?;
 
         // Populate the requested slots
         let mut out = HashMap::with_capacity(input_types.len());
@@ -146,7 +147,8 @@ impl ModelProvider for KBotProvider {
                     out.insert(JointAngles, arr);
                 }
                 JointAngularVelocities => {
-                    let arr = self.get_joint_angular_velocities_from_state(&meta.joint_names, &act_state)?;
+                    let arr = self
+                        .get_joint_angular_velocities_from_state(&meta.joint_names, &act_state)?;
                     out.insert(JointAngularVelocities, arr);
                 }
                 Accelerometer => {
