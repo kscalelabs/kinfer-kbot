@@ -126,100 +126,58 @@ impl ModelProvider for KBotProvider {
     async fn get_inputs(
         &self,
         input_types: &[InputType],
-        metadata: &ModelMetadata,
+        meta: &ModelMetadata,
     ) -> Result<HashMap<InputType, Array<f32, IxDyn>>, ModelError> {
-        let mut inputs = HashMap::new();
+        use InputType::*;
 
-        // Cache actuator state and IMU values to avoid duplicate reads
-        let mut cached_actuator_state: Option<Vec<ActuatorState>> = None;
-        let mut cached_imu_values: Option<crate::imu::IMUData> = None;
+        // Read values from hardware once
+        let actuator_ids  = self.get_actuator_ids(&meta.joint_names)?;
+        let act_state     = self.get_actuator_state(&actuator_ids).await?;
+        let imu_values    = self.imu.get_values().await
+                               .map_err(|e| ModelError::Provider(e.to_string()))?;
 
-        for input_type in input_types {
-            match input_type {
-                InputType::JointAngles => {
-                    if cached_actuator_state.is_none() {
-                        let actuator_ids = self.get_actuator_ids(&metadata.joint_names)?;
-                        cached_actuator_state = Some(self.get_actuator_state(&actuator_ids).await?);
-                    }
-                    let joint_angles = self.get_joint_angles_from_state(
-                        &metadata.joint_names,
-                        cached_actuator_state.as_ref().unwrap(),
-                    )?;
-                    inputs.insert(InputType::JointAngles, joint_angles);
+        // Populate the requested slots
+        let mut out = HashMap::with_capacity(input_types.len());
+
+        for t in input_types {
+            match t {
+                JointAngles => {
+                    let arr = self.get_joint_angles_from_state(&meta.joint_names, &act_state)?;
+                    out.insert(JointAngles, arr);
                 }
-                InputType::JointAngularVelocities => {
-                    if cached_actuator_state.is_none() {
-                        let actuator_ids = self.get_actuator_ids(&metadata.joint_names)?;
-                        cached_actuator_state = Some(self.get_actuator_state(&actuator_ids).await?);
-                    }
-                    let joint_velocities = self.get_joint_angular_velocities_from_state(
-                        &metadata.joint_names,
-                        cached_actuator_state.as_ref().unwrap(),
-                    )?;
-                    inputs.insert(InputType::JointAngularVelocities, joint_velocities);
+                JointAngularVelocities => {
+                    let arr = self.get_joint_angular_velocities_from_state(&meta.joint_names, &act_state)?;
+                    out.insert(JointAngularVelocities, arr);
                 }
-                InputType::ProjectedGravity => {
-                    if cached_imu_values.is_none() {
-                        cached_imu_values = Some(
-                            self.imu
-                                .get_values()
-                                .await
-                                .map_err(|e| ModelError::Provider(e.to_string()))?,
-                        );
-                    }
-                    let projected_gravity = self
-                        .get_projected_gravity_from_values(cached_imu_values.as_ref().unwrap())?;
-                    inputs.insert(InputType::ProjectedGravity, projected_gravity);
+                Accelerometer => {
+                    let arr = self.get_accelerometer_from_values(&imu_values)?;
+                    out.insert(Accelerometer, arr);
                 }
-                InputType::Accelerometer => {
-                    if cached_imu_values.is_none() {
-                        cached_imu_values = Some(
-                            self.imu
-                                .get_values()
-                                .await
-                                .map_err(|e| ModelError::Provider(e.to_string()))?,
-                        );
-                    }
-                    let accelerometer =
-                        self.get_accelerometer_from_values(cached_imu_values.as_ref().unwrap())?;
-                    inputs.insert(InputType::Accelerometer, accelerometer);
+                Gyroscope => {
+                    let arr = self.get_gyroscope_from_values(&imu_values)?;
+                    out.insert(Gyroscope, arr);
                 }
-                InputType::Gyroscope => {
-                    if cached_imu_values.is_none() {
-                        cached_imu_values = Some(
-                            self.imu
-                                .get_values()
-                                .await
-                                .map_err(|e| ModelError::Provider(e.to_string()))?,
-                        );
-                    }
-                    let gyroscope =
-                        self.get_gyroscope_from_values(cached_imu_values.as_ref().unwrap())?;
-                    inputs.insert(InputType::Gyroscope, gyroscope);
+                ProjectedGravity => {
+                    let arr = self.get_projected_gravity_from_values(&imu_values)?;
+                    out.insert(ProjectedGravity, arr);
                 }
-                InputType::Command => {
-                    let command = self.get_command_internal(metadata)?;
-                    inputs.insert(InputType::Command, command);
-                }
-                InputType::Time => {
-                    // Use proper time calculation from start_time
-                    let time_value = (Instant::now() - self.start_time).as_secs_f32();
-                    let time_array = Array::from_shape_vec((1,), vec![time_value])
+                Time => {
+                    let secs = self.start_time.elapsed().as_secs_f32();
+                    let time_arr = Array::from_shape_vec((1,), vec![secs])
                         .map_err(|e| ModelError::Provider(e.to_string()))?
                         .into_dyn();
-                    inputs.insert(InputType::Time, time_array);
+                    out.insert(Time, time_arr);
                 }
-                InputType::Carry => {
-                    // Carry is handled separately in the step function
-                    // This shouldn't be requested through get_inputs
-                    return Err(ModelError::Provider(
-                        "Carry input should not be requested through get_inputs".to_string(),
-                    ));
+                Command => {
+                    out.insert(Command, self.get_command_internal(meta)?);
+                }
+                Carry => {
+                    return Err(ModelError::Provider("Carry should come via step()".into()));
                 }
             }
         }
 
-        Ok(inputs)
+        Ok(out)
     }
 
     async fn take_action(
