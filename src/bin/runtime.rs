@@ -4,6 +4,7 @@ use ::std::path::Path;
 use ::std::sync::Arc;
 
 use kinfer_kbot::initialize_logging;
+use kinfer_kbot::keyboard;
 use kinfer_kbot::provider::KBotProvider;
 use kinfer_kbot::runtime::ModelRuntime;
 
@@ -28,6 +29,9 @@ struct Args {
     /// Torque scale
     #[arg(long, default_value_t = 1.0)]
     torque_scale: f32,
+    /// Enable keyboard commands
+    #[arg(long, default_value = "false")]
+    keyboard_commands: bool,
 }
 
 #[tokio::main]
@@ -36,6 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
     let model_path = Path::new(&args.model_path);
+
+    // Start keyboard listener if enabled
+    if args.keyboard_commands {
+        keyboard::start_keyboard_listener().await?;
+    }
 
     let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
     let model_runner = ModelRunner::new(model_path, model_provider.clone()).await?;
@@ -49,8 +58,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Wait for the Ctrl-C signal
     tokio::signal::ctrl_c().await?;
 
-    // Stop the model runtime
     model_runtime.stop();
+    if args.keyboard_commands {
+        keyboard::cleanup_keyboard();
+    }
 
     Ok(())
 }

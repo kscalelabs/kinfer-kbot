@@ -8,6 +8,7 @@ use ::std::time::{Duration, Instant};
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
 use crate::imu::IMU;
+use crate::keyboard;
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -340,11 +341,20 @@ impl KBotProvider {
         &self,
         metadata: &ModelMetadata,
     ) -> Result<Array<f32, IxDyn>, ModelError> {
-        // For now, return zeros for command input
         let num_commands = metadata.num_commands.unwrap_or(0);
-        let command_values = vec![0.0f32; num_commands];
-        Ok(Array::from_shape_vec((num_commands,), command_values)
-            .map_err(|e| ModelError::Provider(e.to_string()))?
-            .into_dyn())
+
+        if num_commands == 3 {
+            let commands = keyboard::get_commands();
+            let command_values = vec![commands[0], commands[1], commands[2]];
+
+            Ok(Array::from_shape_vec((num_commands,), command_values)
+                .map_err(|e| ModelError::Provider(e.to_string()))?
+                .into_dyn())
+        } else {
+            let command_values = vec![0.0f32; num_commands];
+            Ok(Array::from_shape_vec((num_commands,), command_values)
+                .map_err(|e| ModelError::Provider(e.to_string()))?
+                .into_dyn())
+        }
     }
 }

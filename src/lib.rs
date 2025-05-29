@@ -3,6 +3,7 @@ use ::tracing_subscriber::FmtSubscriber;
 pub mod actuators;
 pub mod constants;
 pub mod imu;
+pub mod keyboard;
 pub mod provider;
 pub mod runtime;
 
