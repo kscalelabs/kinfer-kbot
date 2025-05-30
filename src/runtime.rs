@@ -4,7 +4,8 @@ use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
 use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
-use ::tokio::time::{interval, sleep};
+use ::tokio::time::sleep;
+use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFlags};
 
 use crate::constants::ACTUATOR_NAME_TO_ID;
 use crate::keyboard;
@@ -117,15 +118,28 @@ impl ModelRuntime {
             };
 
             // Wait for the first tick, since it happens immediately.
-            let mut read_interval = interval(dt);
-            let mut command_interval = interval(dt);
+            let read_interval =
+                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            read_interval
+                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
+                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
+
+            let command_interval =
+                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            command_interval
+                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
+                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
 
             // Start the two intervals N milliseconds apart. The first tick is
             // always instantaneous and represents the start of the interval
             // ticks.
-            read_interval.tick().await;
+            read_interval
+                .wait()
+                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
             sleep(dt - TRIGGER_READ_BEFORE).await;
-            command_interval.tick().await;
+            command_interval
+                .wait()
+                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
 
             while running.load(Ordering::Relaxed) {
                 let (output, next_carry) = model_runner
@@ -148,9 +162,13 @@ impl ModelRuntime {
                     // Trigger an actuator read N milliseconds before the next
                     // command tick, to make sure the observations are as fresh
                     // as possible.
-                    read_interval.tick().await;
+                    read_interval.wait().map_err(|e| {
+                        ModelError::Provider(format!("Failed to wait for timer: {}", e))
+                    })?;
                     model_provider.trigger_actuator_read().await?;
-                    command_interval.tick().await;
+                    command_interval.wait().map_err(|e| {
+                        ModelError::Provider(format!("Failed to wait for timer: {}", e))
+                    })?;
                 }
 
                 joint_positions = output;
