@@ -2,6 +2,7 @@ use ::clap::Parser;
 use ::kinfer::model::ModelRunner;
 use ::std::path::Path;
 use ::std::sync::Arc;
+use kinfer_kbot::initialize_file_and_console_logging;
 
 use kinfer_kbot::initialize_logging;
 use kinfer_kbot::keyboard;
@@ -32,13 +33,21 @@ struct Args {
     /// Enable keyboard commands
     #[arg(long, default_value = "false")]
     keyboard_commands: bool,
+    /// File logging
+    #[arg(long, default_value = "false")]
+    file_logging: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    initialize_logging();
-
     let args = Args::parse();
+
+    if args.file_logging {
+        initialize_file_and_console_logging();
+    } else {
+        initialize_logging();
+    }
+
     let model_path = Path::new(&args.model_path);
 
     // Just prepare the keyboard info (but don't start anything yet)

@@ -10,6 +10,8 @@ use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFl
 use crate::constants::ACTUATOR_NAME_TO_ID;
 use crate::keyboard;
 use crate::provider::KBotProvider;
+use std::time::SystemTime;
+use tracing::{debug, info};
 
 // We trigger a read N milliseconds before reading the current actuator state,
 // to account for the asynchronicity of the CAN RX buffer.
@@ -75,6 +77,7 @@ impl ModelRuntime {
         running.store(true, Ordering::Relaxed);
 
         runtime.spawn(async move {
+            info!("Starting model runtime");
             // Moves to home position.
             model_provider.move_to_home().await?;
 
@@ -141,12 +144,27 @@ impl ModelRuntime {
                 .wait()
                 .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
 
+            info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
+                let uuid = uuid::Uuid::new_v4();
+                let uuid_main_control_loop = uuid::Uuid::new_v4();
+                let start = SystemTime::now();
+                debug!("runtime::model_runner_step::START uuid={}", uuid);
+                debug!(
+                    "runtime::main_control_loop::START uuid={}",
+                    uuid_main_control_loop
+                );
+
                 let (output, next_carry) = model_runner
                     .step(carry)
                     .await
                     .map_err(|e| ModelError::Provider(e.to_string()))?;
                 carry = next_carry;
+                debug!(
+                    "runtime::model_runner_step::END uuid={}, elapsed: {:?}",
+                    uuid,
+                    start.elapsed()
+                );
 
                 for i in 1..(slowdown_factor + 1) {
                     if !running.load(Ordering::Relaxed) {
@@ -172,7 +190,13 @@ impl ModelRuntime {
                 }
 
                 joint_positions = output;
+                debug!(
+                    "runtime::main_control_loop::END uuid={}, elapsed: {:?}",
+                    uuid_main_control_loop,
+                    start.elapsed()
+                );
             }
+            info!("Exiting main control loop");
             Ok::<(), ModelError>(())
         });
 
@@ -181,6 +205,7 @@ impl ModelRuntime {
     }
 
     pub fn stop(&mut self) {
+        info!("Stopping model runtime");
         self.running.store(false, Ordering::Relaxed);
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown_background();

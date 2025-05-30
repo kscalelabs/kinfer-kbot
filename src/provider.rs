@@ -9,6 +9,7 @@ use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureReques
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
 use crate::imu::IMU;
 use crate::keyboard;
+use tracing::{debug, trace};
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -85,13 +86,20 @@ impl KBotProvider {
         &self,
         actuator_ids: &[u32],
     ) -> Result<Vec<ActuatorState>, ModelError> {
-        self.actuators
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_actuator_state::START uuid={}", uuid);
+        let result = self
+            .actuators
             .get_actuators_state(actuator_ids.to_vec())
             .await
-            .map_err(|e| ModelError::Provider(e.to_string()))
+            .map_err(|e| ModelError::Provider(e.to_string()))?;
+        debug!("provider::get_actuator_state::END uuid={}", uuid);
+        Ok(result)
     }
 
     pub async fn trigger_actuator_read(&self) -> Result<(), ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::trigger_actuator_read::START uuid={}", uuid);
         let actuator_ids = ACTUATOR_NAME_TO_ID
             .iter()
             .map(|(_, id)| *id)
@@ -100,10 +108,13 @@ impl KBotProvider {
             .trigger_actuator_read(actuator_ids)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
+        debug!("provider::trigger_actuator_read::END uuid={}", uuid);
         Ok(())
     }
 
     pub async fn move_to_home(&self) -> Result<(), ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::move_to_home::START uuid={}", uuid);
         let home_position = HOME_POSITION;
         let mut commands = vec![];
         for (id, position) in home_position {
@@ -118,6 +129,7 @@ impl KBotProvider {
             .command_actuators(commands)
             .await
             .map_err(|e| ModelError::Provider(e.to_string()))?;
+        debug!("provider::move_to_home::END uuid={}", uuid);
         Ok(())
     }
 }
@@ -130,6 +142,8 @@ impl ModelProvider for KBotProvider {
         meta: &ModelMetadata,
     ) -> Result<HashMap<InputType, Array<f32, IxDyn>>, ModelError> {
         use InputType::*;
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_inputs::START uuid={}", uuid);
 
         // Read values from hardware once
         let (act_state, imu_values) = tokio::try_join!(
@@ -185,7 +199,7 @@ impl ModelProvider for KBotProvider {
                 }
             }
         }
-
+        debug!("provider::get_inputs::END uuid={}", uuid);
         Ok(out)
     }
 
@@ -194,6 +208,8 @@ impl ModelProvider for KBotProvider {
         action: Array<f32, IxDyn>,
         metadata: &ModelMetadata,
     ) -> Result<(), ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::take_action::START uuid={}", uuid);
         let joint_names_from_metadata = &metadata.joint_names;
         assert_eq!(joint_names_from_metadata.len(), action.len());
 
@@ -227,7 +243,7 @@ impl ModelProvider for KBotProvider {
             .map_err(|e| ModelError::Provider(e.to_string()))?;
 
         tracing::debug!("took action {:?} at time {:?}", action, Instant::now());
-
+        debug!("provider::take_action::END uuid={}", uuid);
         Ok(())
     }
 }
@@ -239,6 +255,8 @@ impl KBotProvider {
         joint_names: &[String],
         actuator_state: &[ActuatorState],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_joint_angles_from_state::START uuid={}", uuid);
         let joint_angles = actuator_state
             .iter()
             .enumerate()
@@ -255,7 +273,7 @@ impl KBotProvider {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-
+        debug!("provider::get_joint_angles_from_state::END uuid={}", uuid);
         Ok(Array::from_shape_vec((joint_names.len(),), joint_angles)
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -266,6 +284,11 @@ impl KBotProvider {
         joint_names: &[String],
         actuator_state: &[ActuatorState],
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!(
+            "provider::get_joint_angular_velocities_from_state::START uuid={}",
+            uuid
+        );
         let joint_angular_velocities: Vec<f32> = actuator_state
             .iter()
             .enumerate()
@@ -282,7 +305,10 @@ impl KBotProvider {
                 })
             })
             .collect::<Result<Vec<f32>, ModelError>>()?;
-
+        debug!(
+            "provider::get_joint_angular_velocities_from_state::END uuid={}",
+            uuid
+        );
         Ok(
             Array::from_shape_vec((joint_names.len(),), joint_angular_velocities)
                 .map_err(|e| ModelError::Provider(e.to_string()))?
@@ -294,6 +320,11 @@ impl KBotProvider {
         &self,
         imu_values: &crate::imu::IMUData,
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!(
+            "provider::get_projected_gravity_from_values::START uuid={}",
+            uuid
+        );
         let projected_gravity = Quaternion {
             x: imu_values.quat_x,
             y: imu_values.quat_y,
@@ -301,6 +332,10 @@ impl KBotProvider {
             w: imu_values.quat_w,
         }
         .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
+        debug!(
+            "provider::get_projected_gravity_from_values::END uuid={}",
+            uuid
+        );
         Ok(Array::from_shape_vec(
             (3,),
             vec![
@@ -317,9 +352,15 @@ impl KBotProvider {
         &self,
         imu_values: &crate::imu::IMUData,
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!(
+            "provider::get_accelerometer_from_values::START uuid={}",
+            uuid
+        );
         let accel_x = imu_values.accel_x;
         let accel_y = imu_values.accel_y;
         let accel_z = imu_values.accel_z;
+        debug!("provider::get_accelerometer_from_values::END uuid={}", uuid);
         Ok(Array::from_shape_vec((3,), vec![accel_x, accel_y, accel_z])
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -329,9 +370,12 @@ impl KBotProvider {
         &self,
         imu_values: &crate::imu::IMUData,
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_gyroscope_from_values::START uuid={}", uuid);
         let gyro_x = imu_values.gyro_x;
         let gyro_y = imu_values.gyro_y;
         let gyro_z = imu_values.gyro_z;
+        debug!("provider::get_gyroscope_from_values::END uuid={}", uuid);
         Ok(Array::from_shape_vec((3,), vec![gyro_x, gyro_y, gyro_z])
             .map_err(|e| ModelError::Provider(e.to_string()))?
             .into_dyn())
@@ -341,20 +385,28 @@ impl KBotProvider {
         &self,
         metadata: &ModelMetadata,
     ) -> Result<Array<f32, IxDyn>, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_command_internal::START uuid={}", uuid);
         let num_commands = metadata.num_commands.unwrap_or(0);
 
-        if num_commands == 3 {
-            let commands = keyboard::get_commands();
-            let command_values = vec![commands[0], commands[1], commands[2]];
+        let result = match num_commands {
+            3 => {
+                let commands = keyboard::get_commands();
+                let command_values = vec![commands[0], commands[1], commands[2]];
 
-            Ok(Array::from_shape_vec((num_commands,), command_values)
-                .map_err(|e| ModelError::Provider(e.to_string()))?
-                .into_dyn())
-        } else {
-            let command_values = vec![0.0f32; num_commands];
-            Ok(Array::from_shape_vec((num_commands,), command_values)
-                .map_err(|e| ModelError::Provider(e.to_string()))?
-                .into_dyn())
-        }
+                Array::from_shape_vec((num_commands,), command_values)
+                    .map_err(|e| ModelError::Provider(e.to_string()))?
+                    .into_dyn()
+            }
+            _ => {
+                let command_values = vec![0.0f32; num_commands];
+                Array::from_shape_vec((num_commands,), command_values)
+                    .map_err(|e| ModelError::Provider(e.to_string()))?
+                    .into_dyn()
+            }
+        };
+
+        debug!("provider::get_command_internal::END uuid={}", uuid);
+        Ok(result)
     }
 }
