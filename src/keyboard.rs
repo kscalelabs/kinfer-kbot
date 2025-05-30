@@ -51,50 +51,40 @@ pub fn start_keyboard_listener_now() {
         }
 
         while KEYBOARD_RUNNING.load(Ordering::Relaxed) {
-            match event::poll(Duration::from_millis(20)) {
-                Ok(true) => {
-                    if let Ok(Event::Key(KeyEvent { code, kind, .. })) = event::read() {
-                        // Handle ESC as graceful shutdown signal
-                        if matches!(code, KeyCode::Esc) && kind == KeyEventKind::Press {
-                            println!("\nESC pressed - requesting graceful shutdown...");
-                            SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
-                            KEYBOARD_RUNNING.store(false, Ordering::Relaxed);
-                            break;
-                        }
+            // Block until an event is available (no polling!)
+            // This uses zero CPU when no keys are pressed
+            match event::read() {
+                Ok(Event::Key(KeyEvent { code, kind, .. })) => {
+                    // Handle ESC as graceful shutdown signal
+                    if matches!(code, KeyCode::Esc) && kind == KeyEventKind::Press {
+                        println!("\nESC pressed - requesting graceful shutdown...");
+                        SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+                        KEYBOARD_RUNNING.store(false, Ordering::Relaxed);
+                        break;
+                    }
 
-                        // Streamlined key handling
-                        match (kind, code) {
-                            (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.5),
-                            (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.5),
-                            (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.5),
-                            (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.5),
-                            (KeyEventKind::Press, KeyCode::Char('q')) => set_command(2, 0.5),
-                            (KeyEventKind::Press, KeyCode::Char('e')) => set_command(2, -0.5),
-                            (KeyEventKind::Press, KeyCode::Char(' ')) => {
-                                // Batch reset for efficiency
-                                COMMAND_X.store(0, Ordering::Relaxed);
-                                COMMAND_Y.store(0, Ordering::Relaxed);
-                                COMMAND_YAW.store(0, Ordering::Relaxed);
-                            }
-                            (KeyEventKind::Release, KeyCode::Char('w' | 's')) => {
-                                set_command(0, 0.0)
-                            }
-                            (KeyEventKind::Release, KeyCode::Char('a' | 'd')) => {
-                                set_command(1, 0.0)
-                            }
-                            (KeyEventKind::Release, KeyCode::Char('q' | 'e')) => {
-                                set_command(2, 0.0)
-                            }
-                            _ => {}
+                    // Handle key events immediately when they occur
+                    match (kind, code) {
+                        (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.5),
+                        (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.5),
+                        (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.5),
+                        (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.5),
+                        (KeyEventKind::Press, KeyCode::Char('q')) => set_command(2, 0.5),
+                        (KeyEventKind::Press, KeyCode::Char('e')) => set_command(2, -0.5),
+                        (KeyEventKind::Press, KeyCode::Char(' ')) => {
+                            COMMAND_X.store(0, Ordering::Relaxed);
+                            COMMAND_Y.store(0, Ordering::Relaxed);
+                            COMMAND_YAW.store(0, Ordering::Relaxed);
                         }
+                        (KeyEventKind::Release, KeyCode::Char('w' | 's')) => set_command(0, 0.0),
+                        (KeyEventKind::Release, KeyCode::Char('a' | 'd')) => set_command(1, 0.0),
+                        (KeyEventKind::Release, KeyCode::Char('q' | 'e')) => set_command(2, 0.0),
+                        _ => {}
                     }
                 }
-                Ok(false) => {
-                    // Sleep for a bit longer when no events
-                    std::thread::sleep(Duration::from_millis(10));
-                }
+                Ok(_) => {}
                 Err(_) => {
-                    std::thread::sleep(Duration::from_millis(20));
+                    break;
                 }
             }
         }
