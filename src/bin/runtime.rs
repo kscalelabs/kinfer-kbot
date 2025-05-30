@@ -41,23 +41,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let model_path = Path::new(&args.model_path);
 
-    // Start keyboard listener if enabled
+    // Just prepare the keyboard info (but don't start anything yet)
     if args.keyboard_commands {
-        keyboard::start_keyboard_listener().await?;
+        keyboard::prepare_keyboard_listener().await?;
     }
 
     let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
     let model_runner = ModelRunner::new(model_path, model_provider.clone()).await?;
 
-    // Initialize and start the model runtime.
-    let mut model_runtime = ModelRuntime::new(model_provider, Arc::new(model_runner), args.dt);
+    // Pass the keyboard_enabled flag to the runtime
+    let mut model_runtime = ModelRuntime::new(
+        model_provider,
+        Arc::new(model_runner),
+        args.dt,
+        args.keyboard_commands,
+    );
     model_runtime.set_slowdown_factor(args.slowdown_factor);
     model_runtime.set_magnitude_factor(args.magnitude_factor);
+
     model_runtime.start()?;
 
-    // Wait for the Ctrl-C signal
     tokio::signal::ctrl_c().await?;
+    println!("\nCtrl+C received");
 
+    // Stop the model runtime and cleanup
     model_runtime.stop();
     if args.keyboard_commands {
         keyboard::cleanup_keyboard();

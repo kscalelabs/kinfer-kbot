@@ -7,6 +7,7 @@ use ::tokio::runtime::Runtime;
 use ::tokio::time::{interval, sleep};
 
 use crate::constants::ACTUATOR_NAME_TO_ID;
+use crate::keyboard;
 use crate::provider::KBotProvider;
 
 // We trigger a read N milliseconds before reading the current actuator state,
@@ -21,10 +22,16 @@ pub struct ModelRuntime {
     magnitude_factor: f32,
     running: Arc<AtomicBool>,
     runtime: Option<Runtime>,
+    keyboard_enabled: bool,
 }
 
 impl ModelRuntime {
-    pub fn new(model_provider: Arc<KBotProvider>, model_runner: Arc<ModelRunner>, dt: u64) -> Self {
+    pub fn new(
+        model_provider: Arc<KBotProvider>,
+        model_runner: Arc<ModelRunner>,
+        dt: u64,
+        keyboard_enabled: bool,
+    ) -> Self {
         assert!(dt > TRIGGER_READ_BEFORE.as_millis() as u64);
 
         Self {
@@ -35,6 +42,7 @@ impl ModelRuntime {
             magnitude_factor: 1.0,
             running: Arc::new(AtomicBool::new(false)),
             runtime: None,
+            keyboard_enabled,
         }
     }
 
@@ -60,6 +68,7 @@ impl ModelRuntime {
         let dt = self.dt;
         let slowdown_factor = self.slowdown_factor;
         let magnitude_factor = self.magnitude_factor;
+        let keyboard_enabled = self.keyboard_enabled;
 
         let runtime = Runtime::new()?;
         running.store(true, Ordering::Relaxed);
@@ -72,6 +81,12 @@ impl ModelRuntime {
             println!("Press enter to start...");
             let mut input = String::new();
             std::io::stdin().read_line(&mut input).unwrap();
+
+            // NOW start the keyboard listener if enabled
+            if keyboard_enabled {
+                keyboard::start_keyboard_listener_now();
+                println!("Keyboard controls are now active! Use ESC to exit or Ctrl+C.");
+            }
 
             for i in 1..5 {
                 println!("Starting in {} seconds...", 5 - i);
