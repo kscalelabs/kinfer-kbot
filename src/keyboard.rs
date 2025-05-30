@@ -65,12 +65,12 @@ pub fn start_keyboard_listener_now() {
 
                     // Handle key events immediately when they occur
                     match (kind, code) {
-                        (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.5),
-                        (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.5),
-                        (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.5),
-                        (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.5),
-                        (KeyEventKind::Press, KeyCode::Char('q')) => set_command(2, 0.5),
-                        (KeyEventKind::Press, KeyCode::Char('e')) => set_command(2, -0.5),
+                        (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.3),
+                        (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.3),
+                        (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.3),
+                        (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.3),
+                        (KeyEventKind::Press, KeyCode::Char('q')) => set_command(2, 0.3),
+                        (KeyEventKind::Press, KeyCode::Char('e')) => set_command(2, -0.3),
                         (KeyEventKind::Press, KeyCode::Char(' ')) => {
                             COMMAND_X.store(0, Ordering::Relaxed);
                             COMMAND_Y.store(0, Ordering::Relaxed);
