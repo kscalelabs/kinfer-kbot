@@ -10,6 +10,7 @@ static COMMAND_X: AtomicU32 = AtomicU32::new(0);
 static COMMAND_Y: AtomicU32 = AtomicU32::new(0);
 static COMMAND_YAW: AtomicU32 = AtomicU32::new(0);
 static KEYBOARD_RUNNING: AtomicBool = AtomicBool::new(false);
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 pub fn get_commands() -> [f32; 3] {
     [
@@ -19,6 +20,7 @@ pub fn get_commands() -> [f32; 3] {
     ]
 }
 
+#[inline]
 fn set_command(index: usize, value: f32) {
     let bits = value.to_bits();
     match index {
@@ -29,18 +31,16 @@ fn set_command(index: usize, value: f32) {
     }
 }
 
-// This function just sets up the flag but doesn't start raw mode yet
 pub async fn prepare_keyboard_listener() -> Result<(), Box<dyn std::error::Error>> {
     println!("Keyboard controls will be available after startup:");
     println!("  W/S: X velocity (forward/backward)");
     println!("  A/D: Y velocity (left/right)");
     println!("  Q/E: Yaw rate (turn left/right)");
     println!("  Space: Reset all commands");
-    println!("  ESC: Exit program");
+    println!("  ESC: Exit program gracefully");
     Ok(())
 }
 
-// This function actually starts the keyboard listener (call after "press enter")
 pub fn start_keyboard_listener_now() {
     KEYBOARD_RUNNING.store(true, Ordering::Relaxed);
 
@@ -51,49 +51,52 @@ pub fn start_keyboard_listener_now() {
         }
 
         while KEYBOARD_RUNNING.load(Ordering::Relaxed) {
-            match event::poll(Duration::from_millis(50)) {
+            match event::poll(Duration::from_millis(20)) {
                 Ok(true) => {
-                    match event::read() {
-                        Ok(Event::Key(KeyEvent { code, kind, .. })) => {
-                            // Handle ESC as exit key
-                            if let KeyCode::Esc = code {
-                                if kind == KeyEventKind::Press {
-                                    println!("\nESC pressed - exiting...");
-                                    std::process::exit(0);
-                                }
-                            }
-
-                            match kind {
-                                KeyEventKind::Press => match code {
-                                    KeyCode::Char('w') => set_command(0, 0.5),
-                                    KeyCode::Char('s') => set_command(0, -0.5),
-                                    KeyCode::Char('a') => set_command(1, 0.5),
-                                    KeyCode::Char('d') => set_command(1, -0.5),
-                                    KeyCode::Char('q') => set_command(2, 0.5),
-                                    KeyCode::Char('e') => set_command(2, -0.5),
-                                    KeyCode::Char(' ') => {
-                                        set_command(0, 0.0);
-                                        set_command(1, 0.0);
-                                        set_command(2, 0.0);
-                                    }
-                                    _ => {}
-                                },
-                                KeyEventKind::Release => match code {
-                                    KeyCode::Char('w') | KeyCode::Char('s') => set_command(0, 0.0),
-                                    KeyCode::Char('a') | KeyCode::Char('d') => set_command(1, 0.0),
-                                    KeyCode::Char('q') | KeyCode::Char('e') => set_command(2, 0.0),
-                                    _ => {}
-                                },
-                                _ => {}
-                            }
+                    if let Ok(Event::Key(KeyEvent { code, kind, .. })) = event::read() {
+                        // Handle ESC as graceful shutdown signal
+                        if matches!(code, KeyCode::Esc) && kind == KeyEventKind::Press {
+                            println!("\nESC pressed - requesting graceful shutdown...");
+                            SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+                            KEYBOARD_RUNNING.store(false, Ordering::Relaxed);
+                            break;
                         }
-                        _ => {}
+
+                        // Streamlined key handling
+                        match (kind, code) {
+                            (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.5),
+                            (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.5),
+                            (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.5),
+                            (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.5),
+                            (KeyEventKind::Press, KeyCode::Char('q')) => set_command(2, 0.5),
+                            (KeyEventKind::Press, KeyCode::Char('e')) => set_command(2, -0.5),
+                            (KeyEventKind::Press, KeyCode::Char(' ')) => {
+                                // Batch reset for efficiency
+                                COMMAND_X.store(0, Ordering::Relaxed);
+                                COMMAND_Y.store(0, Ordering::Relaxed);
+                                COMMAND_YAW.store(0, Ordering::Relaxed);
+                            }
+                            (KeyEventKind::Release, KeyCode::Char('w' | 's')) => {
+                                set_command(0, 0.0)
+                            }
+                            (KeyEventKind::Release, KeyCode::Char('a' | 'd')) => {
+                                set_command(1, 0.0)
+                            }
+                            (KeyEventKind::Release, KeyCode::Char('q' | 'e')) => {
+                                set_command(2, 0.0)
+                            }
+                            _ => {}
+                        }
                     }
                 }
-                _ => {}
+                Ok(false) => {
+                    // Sleep for a bit longer when no events
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
             }
-
-            std::thread::sleep(Duration::from_millis(10));
         }
 
         let _ = disable_raw_mode();
@@ -102,6 +105,10 @@ pub fn start_keyboard_listener_now() {
 
 pub fn is_keyboard_running() -> bool {
     KEYBOARD_RUNNING.load(Ordering::Relaxed)
+}
+
+pub fn is_shutdown_requested() -> bool {
+    SHUTDOWN_REQUESTED.load(Ordering::Relaxed)
 }
 
 pub fn cleanup_keyboard() {

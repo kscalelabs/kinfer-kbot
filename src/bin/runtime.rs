@@ -61,14 +61,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     model_runtime.start()?;
 
-    tokio::signal::ctrl_c().await?;
-    println!("\nCtrl+C received");
+    // Wait for either Ctrl-C signal OR keyboard ESC signal
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            println!("\nCtrl+C received - shutting down gracefully...");
+        }
+        _ = async {
+            // Poll for keyboard shutdown signal
+            if args.keyboard_commands {
+                while !keyboard::is_shutdown_requested() {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+                println!("ESC shutdown signal received");
+            } else {
+                // If no keyboard, just wait (until Ctrl+C)
+                std::future::pending::<()>().await;
+            }
+        } => {}
+    }
 
     // Stop the model runtime and cleanup
+    println!("Stopping model runtime...");
     model_runtime.stop();
+
     if args.keyboard_commands {
+        println!("Cleaning up keyboard...");
         keyboard::cleanup_keyboard();
     }
 
+    println!("Graceful shutdown complete");
     Ok(())
 }
