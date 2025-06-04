@@ -1,5 +1,6 @@
 use ::eyre::Result;
-use ::imu::{HiwonderReader, ImuReader};
+use imu::Vector3;
+use ::imu::{HiwonderReader, ImuReader, Quaternion};
 use ::std::time::Duration;
 use ::tracing::{error, info, trace};
 
@@ -14,10 +15,51 @@ pub struct IMUData {
     pub gyro_x: f32,
     pub gyro_y: f32,
     pub gyro_z: f32,
-    pub quat_x: f32,
-    pub quat_y: f32,
-    pub quat_z: f32,
-    pub quat_w: f32,
+    pub quat: Quaternion,
+}
+
+const EPS: f32 = 1e-6;
+
+pub fn quat_to_euler(quat: Quaternion) -> Vector3 {
+
+    let magnitude = (quat.w * quat.w + quat.x * quat.x + quat.y * quat.y + quat.z * quat.z).sqrt();
+    
+
+    let normalized_quat = Quaternion {
+        w: quat.w / (magnitude + EPS),
+        x: quat.x / (magnitude + EPS),
+        y: quat.y / (magnitude + EPS),
+        z: quat.z / (magnitude + EPS),
+    };
+
+    let roll = (2.0 * (normalized_quat.w * normalized_quat.x + normalized_quat.y * normalized_quat.z))
+        .atan2(1.0 - 2.0 * (normalized_quat.x * normalized_quat.x + normalized_quat.y * normalized_quat.y));
+    
+    let pitch = (2.0 * (normalized_quat.w * normalized_quat.y - normalized_quat.z * normalized_quat.x)).asin();
+    
+    let yaw = (2.0 * (normalized_quat.w * normalized_quat.z + normalized_quat.x * normalized_quat.y))
+        .atan2(1.0 - 2.0 * (normalized_quat.y * normalized_quat.y + normalized_quat.z * normalized_quat.z));
+
+    Vector3::new(roll, pitch, yaw)
+}
+
+pub fn rotate_quat(quat1: Quaternion, quat2: Quaternion) -> Quaternion {
+    let w1 = quat1.w;
+    let x1 = quat1.x;
+    let y1 = quat1.y;
+    let z1 = quat1.z;
+    
+    let w2 = quat2.w;
+    let x2 = quat2.x;
+    let y2 = quat2.y;
+    let z2 = quat2.z;
+    
+    Quaternion {
+        w: w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        x: w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        y: w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        z: w1*z2 + x1*y2 - y1*x2 + z1*w2,
+    }
 }
 
 impl IMU {
@@ -109,10 +151,7 @@ impl IMU {
             gyro_x: gyro.x,
             gyro_y: gyro.y,
             gyro_z: gyro.z,
-            quat_x: quat.x,
-            quat_y: quat.y,
-            quat_z: quat.z,
-            quat_w: quat.w,
+            quat,
         })
     }
 }

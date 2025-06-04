@@ -7,7 +7,7 @@ use ::std::time::{Duration, Instant};
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
-use crate::imu::IMU;
+use crate::imu::{IMU, quat_to_euler, rotate_quat};
 use crate::keyboard;
 use tracing::{debug, trace};
 
@@ -15,6 +15,7 @@ pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
     start_time: Instant,
+    initial_heading: f32,
 }
 
 impl KBotProvider {
@@ -31,6 +32,9 @@ impl KBotProvider {
             )
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?;
+
+        let initial_quat = imu.get_values().await.map_err(|e| ModelError::Provider(e.to_string()))?.quat;
+        let initial_heading = quat_to_euler(initial_quat).z;
 
         // Disable torque on all actuators
         for id in &kbot_actuator_ids {
@@ -66,6 +70,7 @@ impl KBotProvider {
             actuators,
             imu,
             start_time: Instant::now(),
+            initial_heading,
         })
     }
 
@@ -192,7 +197,7 @@ impl ModelProvider for KBotProvider {
                     out.insert(Time, time_arr);
                 }
                 Command => {
-                    out.insert(Command, self.get_command_internal(meta)?);
+                    out.insert(Command, self.get_command_internal(meta, &imu_values)?);
                 }
                 Carry => {
                     return Err(ModelError::Provider("Carry should come via step()".into()));
@@ -325,13 +330,7 @@ impl KBotProvider {
             "provider::get_projected_gravity_from_values::START uuid={}",
             uuid
         );
-        let projected_gravity = Quaternion {
-            x: imu_values.quat_x,
-            y: imu_values.quat_y,
-            z: imu_values.quat_z,
-            w: imu_values.quat_w,
-        }
-        .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
+        let projected_gravity = imu_values.quat.rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
         debug!(
             "provider::get_projected_gravity_from_values::END uuid={}",
             uuid
@@ -381,9 +380,20 @@ impl KBotProvider {
             .into_dyn())
     }
 
+    fn get_quat_from_values(&self, imu_values: &crate::imu::IMUData) -> Result<Quaternion, ModelError> {
+        let uuid = uuid::Uuid::new_v4();
+        debug!("provider::get_quat_from_values::START uuid={}", uuid);
+        let inv_heading_quat = imu::Vector3::euler_to_quaternion(&Vector3::new(0.0, 0.0, -self.initial_heading));
+
+        let quat = imu_values.quat;
+        let rotated_quat = rotate_quat(quat, inv_heading_quat);
+        Ok(rotated_quat)
+    }
+
     fn get_command_internal(
         &self,
         metadata: &ModelMetadata,
+        imu_values: &crate::imu::IMUData,
     ) -> Result<Array<f32, IxDyn>, ModelError> {
         let uuid = uuid::Uuid::new_v4();
         debug!("provider::get_command_internal::START uuid={}", uuid);
@@ -393,6 +403,18 @@ impl KBotProvider {
             3 => {
                 let commands = keyboard::get_commands();
                 let command_values = vec![commands[0], commands[1], commands[2]];
+                
+
+                Array::from_shape_vec((num_commands,), command_values)
+                    .map_err(|e| ModelError::Provider(e.to_string()))?
+                    .into_dyn()
+            }
+            11 => {
+                let commands = keyboard::get_commands();
+                
+                let quat = self.get_quat_from_values(imu_values)?;
+
+                let command_values = vec![commands[0], commands[1], commands[2], quat.x, quat.y, quat.z, quat.w, 0.0, 0.0, 0.0, 0.0];
 
                 Array::from_shape_vec((num_commands,), command_values)
                     .map_err(|e| ModelError::Provider(e.to_string()))?
