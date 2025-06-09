@@ -7,7 +7,7 @@ use ::std::time::{Duration, Instant};
 
 use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureRequest};
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
-use crate::imu::{IMU, quat_to_euler, rotate_quat};
+use crate::imu::{quat_to_euler, rotate_quat, IMU};
 use crate::keyboard;
 use tracing::{debug, trace};
 
@@ -33,7 +33,11 @@ impl KBotProvider {
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?;
 
-        let initial_quat = imu.get_values().await.map_err(|e| ModelError::Provider(e.to_string()))?.quat;
+        let initial_quat = imu
+            .get_values()
+            .await
+            .map_err(|e| ModelError::Provider(e.to_string()))?
+            .quat;
         let initial_heading = quat_to_euler(initial_quat).z;
 
         // Disable torque on all actuators
@@ -180,6 +184,16 @@ impl ModelProvider for KBotProvider {
                 Accelerometer => {
                     let arr = self.get_accelerometer_from_values(&imu_values)?;
                     out.insert(Accelerometer, arr);
+                }
+                InitialHeading => {
+                    let arr = Array::from_shape_vec((1,), vec![self.initial_heading])
+                        .map_err(|e| ModelError::Provider(e.to_string()))?
+                        .into_dyn();
+                    out.insert(InitialHeading, arr);
+                }
+                Quaternion => {
+                    let arr = self.get_quat_from_values(&imu_values)?;
+                    out.insert(Quaternion, arr);
                 }
                 Gyroscope => {
                     let arr = self.get_gyroscope_from_values(&imu_values)?;
@@ -330,7 +344,9 @@ impl KBotProvider {
             "provider::get_projected_gravity_from_values::START uuid={}",
             uuid
         );
-        let projected_gravity = imu_values.quat.rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
+        let projected_gravity = imu_values
+            .quat
+            .rotate_vector(Vector3::new(0.0, 0.0, -9.81), true);
         debug!(
             "provider::get_projected_gravity_from_values::END uuid={}",
             uuid
@@ -380,14 +396,19 @@ impl KBotProvider {
             .into_dyn())
     }
 
-    fn get_quat_from_values(&self, imu_values: &crate::imu::IMUData) -> Result<Quaternion, ModelError> {
+    fn get_quat_from_values(
+        &self,
+        imu_values: &crate::imu::IMUData,
+    ) -> Result<Array<f32, IxDyn>, ModelError> {
         let uuid = uuid::Uuid::new_v4();
         debug!("provider::get_quat_from_values::START uuid={}", uuid);
-        let inv_heading_quat = imu::Vector3::euler_to_quaternion(&Vector3::new(0.0, 0.0, -self.initial_heading));
-
         let quat = imu_values.quat;
-        let rotated_quat = rotate_quat(quat, inv_heading_quat);
-        Ok(rotated_quat)
+        debug!("provider::get_quat_from_values::END uuid={}", uuid);
+        Ok(
+            Array::from_shape_vec((4,), vec![quat.w, quat.x, quat.y, quat.z])
+                .map_err(|e| ModelError::Provider(e.to_string()))?
+                .into_dyn(),
+        )
     }
 
     fn get_command_internal(
@@ -403,18 +424,23 @@ impl KBotProvider {
             3 => {
                 let commands = keyboard::get_commands();
                 let command_values = vec![commands[0], commands[1], commands[2]];
-                
 
                 Array::from_shape_vec((num_commands,), command_values)
                     .map_err(|e| ModelError::Provider(e.to_string()))?
                     .into_dyn()
             }
-            11 => {
+            7 => {
                 let commands = keyboard::get_commands();
-                
-                let quat = self.get_quat_from_values(imu_values)?;
 
-                let command_values = vec![commands[0], commands[1], commands[2], quat.x, quat.y, quat.z, quat.w, 0.0, 0.0, 0.0, 0.0];
+                let command_values = vec![
+                    commands[0],
+                    commands[1],
+                    commands[2],
+                    commands[3],
+                    commands[4],
+                    commands[5],
+                    commands[6],
+                ];
 
                 Array::from_shape_vec((num_commands,), command_values)
                     .map_err(|e| ModelError::Provider(e.to_string()))?
