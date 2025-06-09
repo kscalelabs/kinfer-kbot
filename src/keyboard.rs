@@ -77,10 +77,10 @@ pub fn start_keyboard_listener_now() {
 
                     // Handle key events immediately when they occur
                     match (kind, code) {
-                        (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.3),
-                        (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.3),
-                        (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.3),
-                        (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.3),
+                        (KeyEventKind::Press, KeyCode::Char('w')) => set_command(0, 0.2),
+                        (KeyEventKind::Press, KeyCode::Char('s')) => set_command(0, -0.2),
+                        (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.2),
+                        (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.2),
                         (KeyEventKind::Press, KeyCode::Char('q')) => {
                             let current_yaw = COMMAND_YAW.load(Ordering::Relaxed);
                             set_command(2, 0.2);
