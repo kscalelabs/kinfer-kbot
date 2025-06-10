@@ -107,10 +107,11 @@ pub fn start_keyboard_listener_now() {
                             let current_pitch = f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
                             set_command(6, current_pitch - 0.1);
                         }
-                        (KeyEventKind::Press, KeyCode::Char(' ')) => {
+                        (KeyEventKind::Press, KeyCode::Char('2')) => {
                             COMMAND_X.store(0, Ordering::Relaxed);
                             COMMAND_Y.store(0, Ordering::Relaxed);
                             COMMAND_YAW.store(0, Ordering::Relaxed);
+                            COMMAND_YAW_RATE.store(0, Ordering::Relaxed);
                             COMMAND_HEIGHT.store(0, Ordering::Relaxed);
                             COMMAND_PITCH.store(0, Ordering::Relaxed);
                             COMMAND_ROLL.store(0, Ordering::Relaxed);

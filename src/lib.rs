@@ -6,6 +6,7 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
+use std::io::{self, Write};
 
 pub mod actuators;
 pub mod constants;
@@ -54,6 +55,7 @@ pub fn initialize_file_and_console_logging() {
         .with_level(true)
         .with_span_events(FmtSpan::CLOSE)
         .with_ansi(true)
+        .with_writer(|| CrWriter(std::io::stderr()))
         .with_filter(EnvFilter::new("info"));
 
     let subscriber = tracing_subscriber::registry()
@@ -63,4 +65,30 @@ pub fn initialize_file_and_console_logging() {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
     info!("Logging initialized - writing to logs/kbot.log");
+}
+
+#[doc(hidden)]
+/// Wraps a writer and automatically inserts `\r` in front of every `\n`.
+struct CrWriter<W: Write>(W);
+
+impl<W: Write> Write for CrWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut start = 0;
+        for (i, b) in buf.iter().enumerate() {
+            if *b == b'\n' {
+                if i > start {
+                    self.0.write_all(&buf[start..i])?;
+                }
+                self.0.write_all(b"\r\n")?; // explicit CR before LF
+                start = i + 1;
+            }
+        }
+        if start < buf.len() {
+            self.0.write_all(&buf[start..])?;
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
 }
