@@ -83,13 +83,13 @@ pub fn start_keyboard_listener_now() {
                         (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.2),
                         (KeyEventKind::Press, KeyCode::Char('q')) => {
                             let current_yaw = COMMAND_YAW.load(Ordering::Relaxed);
-                            set_command(2, 0.2);
-                            set_command(3, current_yaw as f32 + 0.2);
+                            set_command(2, 0.1);
+                            set_command(3, current_yaw as f32 + 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('e')) => {
                             let current_yaw = COMMAND_YAW.load(Ordering::Relaxed);
-                            set_command(2, -0.2);
-                            set_command(3, current_yaw as f32 - 0.2);
+                            set_command(2, -0.1);
+                            set_command(3, current_yaw as f32 - 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('r')) => {
                             let current_roll = COMMAND_ROLL.load(Ordering::Relaxed);
