@@ -429,6 +429,15 @@ impl KBotProvider {
                     .map_err(|e| ModelError::Provider(e.to_string()))?
                     .into_dyn()
             }
+            6 => {
+                let commands = keyboard::get_commands();
+                // Skip yaw rate
+                let command_values = vec![commands[0], commands[1], commands[3], commands[4], commands[5], commands[6]];
+
+                Array::from_shape_vec((num_commands,), command_values)
+                    .map_err(|e| ModelError::Provider(e.to_string()))?
+                    .into_dyn()
+            }
             7 => {
                 let commands = keyboard::get_commands();
 
