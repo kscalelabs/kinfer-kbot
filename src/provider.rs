@@ -9,7 +9,7 @@ use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureReques
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
 use crate::imu::{quat_to_euler, rotate_quat, IMU};
 use crate::keyboard;
-use tracing::{debug, trace};
+use tracing::{debug, trace, info};
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -24,7 +24,7 @@ impl KBotProvider {
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
 
         let (imu, actuators) = tokio::try_join!(
-            IMU::new(&["/dev/ttyUSB0", "/dev/ttyCH341USB0"], 230400),
+            IMU::new(&["/dev/ttyIMU", "/dev/ttyCH341USB0"], 230400),
             Actuator::new(
                 vec!["can0", "can1", "can2", "can3", "can4"],
                 Duration::from_millis(100),
@@ -450,6 +450,8 @@ impl KBotProvider {
                     commands[5],
                     commands[6],
                 ];
+
+                info!("X: {}, Y: {}, Yaw_rate: {}, Yaw: {}", commands[0], commands[1], commands[2], commands[3]);
 
                 Array::from_shape_vec((num_commands,), command_values)
                     .map_err(|e| ModelError::Provider(e.to_string()))?
