@@ -16,10 +16,11 @@ pub struct KBotProvider {
     imu: IMU,
     start_time: Instant,
     initial_heading: f32,
+    go_to_zero: bool,
 }
 
 impl KBotProvider {
-    pub async fn new(torque_enabled: bool, torque_scale: f32) -> Result<Self, ModelError> {
+    pub async fn new(torque_enabled: bool, torque_scale: f32, go_to_zero: bool) -> Result<Self, ModelError> {
         let kbot_actuators = Actuator::create_kbot_actuators();
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
 
@@ -75,6 +76,7 @@ impl KBotProvider {
             imu,
             start_time: Instant::now(),
             initial_heading,
+            go_to_zero,
         })
     }
 
@@ -127,9 +129,14 @@ impl KBotProvider {
         let home_position = HOME_POSITION;
         let mut commands = vec![];
         for (id, position) in home_position {
+            let position_to_send = if self.go_to_zero {
+                0.0
+            } else {
+                position
+            };
             commands.push(ActuatorCommand {
                 actuator_id: id as u32,
-                position: Some(position as f64),
+                position: Some(position_to_send as f64),
                 velocity: None,
                 torque: None,
             });

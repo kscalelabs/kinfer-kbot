@@ -36,6 +36,9 @@ struct Args {
     /// File logging
     #[arg(long, default_value = "false")]
     file_logging: bool,
+    /// Go to zero
+    #[arg(long, default_value = "false")]
+    go_to_zero: bool,
 }
 
 #[tokio::main]
@@ -55,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         keyboard::prepare_keyboard_listener().await?;
     }
 
-    let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale).await?);
+    let model_provider = Arc::new(KBotProvider::new(args.torque_enabled, args.torque_scale, args.go_to_zero).await?);
     let model_runner = ModelRunner::new(model_path, model_provider.clone()).await?;
 
     // Pass the keyboard_enabled flag to the runtime
