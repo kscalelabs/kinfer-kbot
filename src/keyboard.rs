@@ -82,30 +82,30 @@ pub fn start_keyboard_listener_now() {
                         (KeyEventKind::Press, KeyCode::Char('a')) => set_command(1, 0.2),
                         (KeyEventKind::Press, KeyCode::Char('d')) => set_command(1, -0.2),
                         (KeyEventKind::Press, KeyCode::Char('q')) => {
-                            let current_yaw = COMMAND_YAW.load(Ordering::Relaxed);
+                            let current_yaw = f32::from_bits(COMMAND_YAW.load(Ordering::Relaxed));
                             set_command(2, 0.1);
-                            set_command(3, current_yaw as f32 + 0.1);
+                            set_command(3, current_yaw + 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('e')) => {
-                            let current_yaw = COMMAND_YAW.load(Ordering::Relaxed);
+                            let current_yaw = f32::from_bits(COMMAND_YAW.load(Ordering::Relaxed));
                             set_command(2, -0.1);
-                            set_command(3, current_yaw as f32 - 0.1);
+                            set_command(3, current_yaw - 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('r')) => {
-                            let current_roll = COMMAND_ROLL.load(Ordering::Relaxed);
-                            set_command(5, current_roll as f32 + 0.1);
+                            let current_roll = f32::from_bits(COMMAND_ROLL.load(Ordering::Relaxed));
+                            set_command(5, current_roll + 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('f')) => {
-                            let current_roll = COMMAND_ROLL.load(Ordering::Relaxed);
-                            set_command(5, current_roll as f32 - 0.1);
+                            let current_roll = f32::from_bits(COMMAND_ROLL.load(Ordering::Relaxed));
+                            set_command(5, current_roll - 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('t')) => {
-                            let current_pitch = COMMAND_PITCH.load(Ordering::Relaxed);
-                            set_command(6, current_pitch as f32 + 0.1);
+                            let current_pitch = f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
+                            set_command(6, current_pitch + 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('g')) => {
-                            let current_pitch = COMMAND_PITCH.load(Ordering::Relaxed);
-                            set_command(6, current_pitch as f32 - 0.1);
+                            let current_pitch = f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
+                            set_command(6, current_pitch - 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char(' ')) => {
                             COMMAND_X.store(0, Ordering::Relaxed);
