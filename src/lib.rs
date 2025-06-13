@@ -1,4 +1,5 @@
 use ::tracing_subscriber::FmtSubscriber;
+use std::io::{self, Write};
 use time::macros::format_description;
 use tracing::info;
 use tracing_subscriber::{
@@ -6,7 +7,6 @@ use tracing_subscriber::{
     prelude::*,
     EnvFilter,
 };
-use std::io::{self, Write};
 
 pub mod actuators;
 pub mod constants;

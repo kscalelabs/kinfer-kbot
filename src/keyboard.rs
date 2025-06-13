@@ -13,10 +13,11 @@ static COMMAND_YAW: AtomicU32 = AtomicU32::new(0);
 static COMMAND_HEIGHT: AtomicU32 = AtomicU32::new(0);
 static COMMAND_PITCH: AtomicU32 = AtomicU32::new(0);
 static COMMAND_ROLL: AtomicU32 = AtomicU32::new(0);
+static KEYFRAME_INDEX: AtomicU32 = AtomicU32::new(0);
 static KEYBOARD_RUNNING: AtomicBool = AtomicBool::new(false);
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-pub fn get_commands() -> [f32; 7] {
+pub fn get_commands() -> [f32; 8] {
     [
         f32::from_bits(COMMAND_X.load(Ordering::Relaxed)),
         f32::from_bits(COMMAND_Y.load(Ordering::Relaxed)),
@@ -25,6 +26,7 @@ pub fn get_commands() -> [f32; 7] {
         f32::from_bits(COMMAND_HEIGHT.load(Ordering::Relaxed)),
         f32::from_bits(COMMAND_ROLL.load(Ordering::Relaxed)),
         f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed)),
+        f32::from_bits(KEYFRAME_INDEX.load(Ordering::Relaxed)),
     ]
 }
 
@@ -39,6 +41,7 @@ fn set_command(index: usize, value: f32) {
         4 => COMMAND_HEIGHT.store(bits, Ordering::Relaxed),
         5 => COMMAND_ROLL.store(bits, Ordering::Relaxed),
         6 => COMMAND_PITCH.store(bits, Ordering::Relaxed),
+        7 => KEYFRAME_INDEX.store(bits, Ordering::Relaxed),
         _ => {}
     }
 }
@@ -100,12 +103,26 @@ pub fn start_keyboard_listener_now() {
                             set_command(5, current_roll - 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('t')) => {
-                            let current_pitch = f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
+                            let current_pitch =
+                                f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
                             set_command(6, current_pitch + 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('g')) => {
-                            let current_pitch = f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
+                            let current_pitch =
+                                f32::from_bits(COMMAND_PITCH.load(Ordering::Relaxed));
                             set_command(6, current_pitch - 0.1);
+                        }
+                        (KeyEventKind::Press, KeyCode::Char('6')) => {
+                            KEYFRAME_INDEX.store(6, Ordering::Relaxed);
+                        }
+                        (KeyEventKind::Press, KeyCode::Char('7')) => {
+                            KEYFRAME_INDEX.store(7, Ordering::Relaxed);
+                        }
+                        (KeyEventKind::Press, KeyCode::Char('8')) => {
+                            KEYFRAME_INDEX.store(8, Ordering::Relaxed);
+                        }
+                        (KeyEventKind::Press, KeyCode::Char('9')) => {
+                            KEYFRAME_INDEX.store(9, Ordering::Relaxed);
                         }
                         (KeyEventKind::Press, KeyCode::Char('2')) => {
                             COMMAND_X.store(0, Ordering::Relaxed);

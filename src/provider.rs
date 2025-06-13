@@ -9,7 +9,7 @@ use crate::actuators::{Actuator, ActuatorCommand, ActuatorState, ConfigureReques
 use crate::constants::{ACTUATOR_KP_KD, ACTUATOR_NAME_TO_ID, HOME_POSITION};
 use crate::imu::{quat_to_euler, rotate_quat, IMU};
 use crate::keyboard;
-use tracing::{debug, trace, info};
+use tracing::{debug, info, trace};
 
 pub struct KBotProvider {
     actuators: Actuator,
@@ -20,12 +20,19 @@ pub struct KBotProvider {
 }
 
 impl KBotProvider {
-    pub async fn new(torque_enabled: bool, torque_scale: f32, go_to_zero: bool) -> Result<Self, ModelError> {
+    pub async fn new(
+        torque_enabled: bool,
+        torque_scale: f32,
+        go_to_zero: bool,
+    ) -> Result<Self, ModelError> {
         let kbot_actuators = Actuator::create_kbot_actuators();
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
 
         let (imu, actuators) = tokio::try_join!(
-            IMU::new(&["/dev/ttyIMU", "/dev/ttyCH341USB0"], 230400),
+            IMU::new(
+                &["/dev/ttyIMU", "/dev/ttyUSB0", "/dev/ttyCH341USB0"],
+                230400
+            ),
             Actuator::new(
                 vec!["can0", "can1", "can2", "can3", "can4"],
                 Duration::from_millis(100),
@@ -129,11 +136,7 @@ impl KBotProvider {
         let home_position = HOME_POSITION;
         let mut commands = vec![];
         for (id, position) in home_position {
-            let position_to_send = if self.go_to_zero {
-                0.0
-            } else {
-                position
-            };
+            let position_to_send = if self.go_to_zero { 0.0 } else { position };
             commands.push(ActuatorCommand {
                 actuator_id: id as u32,
                 position: Some(position_to_send as f64),
@@ -458,7 +461,14 @@ impl KBotProvider {
             6 => {
                 let commands = keyboard::get_commands();
                 // Skip yaw rate
-                let command_values = vec![commands[0], commands[1], commands[3], commands[4], commands[5], commands[6]];
+                let command_values = vec![
+                    commands[0],
+                    commands[1],
+                    commands[3],
+                    commands[4],
+                    commands[5],
+                    commands[6],
+                ];
 
                 Array::from_shape_vec((num_commands,), command_values)
                     .map_err(|e| ModelError::Provider(e.to_string()))?
@@ -477,7 +487,37 @@ impl KBotProvider {
                     commands[6],
                 ];
 
-                info!("X: {}, Y: {}, Yaw_rate: {}, Yaw: {}", commands[0], commands[1], commands[2], commands[3]);
+                info!(
+                    "X: {}, Y: {}, Yaw_rate: {}, Yaw: {}",
+                    commands[0], commands[1], commands[2], commands[3]
+                );
+
+                Array::from_shape_vec((num_commands,), command_values)
+                    .map_err(|e| ModelError::Provider(e.to_string()))?
+                    .into_dyn()
+            }
+            9 => {
+                let commands = keyboard::get_commands();
+                // Skip yaw rate
+                let frame_index = commands[7] as u32;
+                let frame_one_hot = match frame_index {
+                    7 => vec![1.0, 0.0, 0.0],
+                    8 => vec![0.0, 1.0, 0.0],
+                    9 => vec![0.0, 0.0, 1.0],
+                    _ => vec![1.0, 0.0, 0.0],
+                };
+
+                let command_values = vec![
+                    commands[0],
+                    commands[1],
+                    commands[3],
+                    commands[4],
+                    commands[5],
+                    commands[6],
+                    frame_one_hot[0],
+                    frame_one_hot[1],
+                    frame_one_hot[2],
+                ];
 
                 Array::from_shape_vec((num_commands,), command_values)
                     .map_err(|e| ModelError::Provider(e.to_string()))?
