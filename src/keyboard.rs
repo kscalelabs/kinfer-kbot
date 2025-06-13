@@ -113,16 +113,16 @@ pub fn start_keyboard_listener_now() {
                             set_command(6, current_pitch - 0.1);
                         }
                         (KeyEventKind::Press, KeyCode::Char('6')) => {
-                            KEYFRAME_INDEX.store(6, Ordering::Relaxed);
+                            set_command(7, 6.0);
                         }
                         (KeyEventKind::Press, KeyCode::Char('7')) => {
-                            KEYFRAME_INDEX.store(7, Ordering::Relaxed);
+                            set_command(7, 7.0);
                         }
                         (KeyEventKind::Press, KeyCode::Char('8')) => {
-                            KEYFRAME_INDEX.store(8, Ordering::Relaxed);
+                            set_command(7, 8.0);
                         }
                         (KeyEventKind::Press, KeyCode::Char('9')) => {
-                            KEYFRAME_INDEX.store(9, Ordering::Relaxed);
+                            set_command(7, 9.0);
                         }
                         (KeyEventKind::Press, KeyCode::Char('2')) => {
                             COMMAND_X.store(0, Ordering::Relaxed);
