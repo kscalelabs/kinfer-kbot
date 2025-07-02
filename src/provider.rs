@@ -103,20 +103,46 @@ impl KBotProvider {
     }
 
     pub async fn move_to_home(&self) -> Result<(), ModelError> {
-        let home_position = HOME_POSITION;
-        let mut commands = vec![];
-        for (id, position) in home_position {
-            commands.push(ActuatorCommand {
-                actuator_id: id as u32,
-                position: Some(position as f64),
-                velocity: None,
-                torque: None,
-            });
+        let step_actuators = || async {
+            let mut ret = 0.0f64;
+
+            let states = self.actuators.get_actuators_state(
+                HOME_POSITION.iter().map(|(id, _)| *id as u32).collect::<Vec<u32>>(),
+            ).await.map_err(|e| ModelError::Provider(e.to_string()))?;
+
+            let mut commands = vec![];
+            for (id, target) in HOME_POSITION {
+                let state = states.iter().find(|state| state.actuator_id == id as u32).expect("Actuator in HOME_POSITION not found in states");
+                let Some(position) = state.position else {
+                    continue; // Skip if position is None
+                };
+
+                let err = position - target as f64;
+                ret = ret.max(err.abs());
+
+                let step = err.clamp(-4.0f64.to_radians(), 4.0f64.to_radians());
+
+                commands.push(ActuatorCommand {
+                    actuator_id: id as u32,
+                    position: Some(position + step),
+                    velocity: None,
+                    torque: None,
+                });
+            }
+            self.actuators
+                .command_actuators(commands)
+                .await
+                .map_err(|e| ModelError::Provider(e.to_string()))?;
+
+            Ok::<_, ModelError>(ret)
+        };
+
+        while let Ok(err) = step_actuators().await {
+            if err < 0.1 {
+                break;
+            }
         }
-        self.actuators
-            .command_actuators(commands)
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
+
         Ok(())
     }
 }
@@ -181,7 +207,9 @@ impl ModelProvider for KBotProvider {
                 }
                 Carry => {
                     return Err(ModelError::Provider("Carry should come via step()".into()));
-                }
+                },
+                InitialHeading => todo!(),
+                Quaternion => todo!(),
             }
         }
 
