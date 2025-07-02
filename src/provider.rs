@@ -103,6 +103,17 @@ impl KBotProvider {
     }
 
     pub async fn move_to_home(&self) -> Result<(), ModelError> {
+        pub fn normalize_actuator_qpos(mut qpos: f64) -> f64 {
+            const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
+            // rem_euclid gives a value in [0, 2π)
+            qpos = qpos.rem_euclid(TWO_PI);
+            // shift to (−π, π]
+            if qpos > std::f64::consts::PI {
+                qpos -= TWO_PI;
+            }
+            qpos
+        }
+
         let step_actuators = || async {
             let mut ret = 0.0f64;
 
@@ -117,7 +128,7 @@ impl KBotProvider {
                     continue; // Skip if position is None
                 };
 
-                let err = position - target as f64;
+                let err = normalize_actuator_qpos(position) - target as f64;
                 ret = ret.max(err.abs());
 
                 let step = err.clamp(-4.0f64.to_radians(), 4.0f64.to_radians());
