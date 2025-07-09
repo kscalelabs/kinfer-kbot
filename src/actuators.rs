@@ -8,6 +8,9 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::trace;
 
+#[cfg(feature = "json_logging")]
+use robstride::JsonLogger;
+
 #[derive(Clone, Copy, Debug)]
 pub struct ActuatorCommand {
     pub actuator_id: u32,
@@ -50,6 +53,8 @@ pub struct ActuatorState {
 
 pub struct Actuator {
     supervisor: Arc<Mutex<Supervisor>>,
+    #[cfg(feature = "json_logging")]
+    _json_logger: Option<Arc<JsonLogger>>,
 }
 
 impl Actuator {
@@ -57,6 +62,7 @@ impl Actuator {
         ports: Vec<&str>,
         actuator_timeout: Duration,
         actuators_config: &[(u8, ActuatorConfiguration)],
+        json_logging_path: Option<String>,
     ) -> Result<Self> {
         let mut supervisor = Supervisor::new(actuator_timeout)?;
         let mut found_motors = vec![false; actuators_config.len()];
@@ -119,8 +125,36 @@ impl Actuator {
             }
         }
 
+        // Initialize JSON logging if requested
+        #[cfg(feature = "json_logging")]
+        let json_logger = if let Some(log_path) = json_logging_path {
+            match JsonLogger::new(
+                log_path,
+                1000,                                    // Buffer size
+                Duration::from_millis(100),             // Flush interval
+            ).await {
+                Ok(logger) => {
+                    tracing::info!("JSON logging enabled");
+                    let logger_arc = Arc::new(logger);
+                    
+                    // Enable JSON logging on the supervisor
+                    supervisor.enable_json_logging(logger_arc.clone()).await?;
+                    
+                    Some(logger_arc)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to initialize JSON logger: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let actuator = Self {
             supervisor: Arc::new(Mutex::new(supervisor)),
+            #[cfg(feature = "json_logging")]
+            _json_logger: json_logger,
         };
 
         Ok(actuator)

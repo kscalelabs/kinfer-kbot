@@ -24,6 +24,7 @@ impl KBotProvider {
         torque_enabled: bool,
         torque_scale: f32,
         go_to_zero: bool,
+        json_logging_path: Option<String>,
     ) -> Result<Self, ModelError> {
         let kbot_actuators = Actuator::create_kbot_actuators();
         let kbot_actuator_ids = kbot_actuators.iter().map(|(id, _)| *id).collect::<Vec<_>>();
@@ -37,6 +38,7 @@ impl KBotProvider {
                 vec!["can0", "can1", "can2", "can3", "can4"],
                 Duration::from_millis(100),
                 &kbot_actuators,
+                json_logging_path, 
             )
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?;
