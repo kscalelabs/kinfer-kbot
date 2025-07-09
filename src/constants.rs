@@ -51,25 +51,29 @@ pub const ACTUATOR_KP_KD: [(usize, f32, f32, f32); 20] = [
     (45, 40.0, 0.99, TAU_02),    // right_ankle_02
 ];
 
+const fn degrees_to_radians(degrees: f32) -> f32 {
+    degrees * (std::f32::consts::PI / 180.0)
+}
+
 pub const HOME_POSITION: [(usize, f32); 20] = [
     (21, 0.0),
-    (22, (-10.0_f32).to_radians()),
+    (22, degrees_to_radians(-10.0)),
     (23, 0.0),
-    (24, 90.0_f32.to_radians()),
+    (24, degrees_to_radians(90.0)),
     (25, 0.0),
     (11, 0.0),
-    (12, 10.0_f32.to_radians()),
+    (12, degrees_to_radians(10.0)),
     (13, 0.0),
-    (14, (-90.0_f32).to_radians()),
+    (14, degrees_to_radians(-90.0)),
     (15, 0.0),
-    (41, (-20.0_f32).to_radians()),
-    (42, (-0.0_f32).to_radians()),
+    (41, degrees_to_radians(-20.0)),
+    (42, degrees_to_radians(-0.0)),
     (43, 0.0),
-    (44, (-50.0_f32).to_radians()),
-    (45, 30.0_f32.to_radians()),
-    (31, 20.0_f32.to_radians()),
-    (32, 0.0_f32.to_radians()),
+    (44, degrees_to_radians(-50.0)),
+    (45, degrees_to_radians(30.0)),
+    (31, degrees_to_radians(20.0)),
+    (32, degrees_to_radians(0.0)),
     (33, 0.0),
-    (34, 50.0_f32.to_radians()),
-    (35, (-30.0_f32).to_radians()),
+    (34, degrees_to_radians(50.0)),
+    (35, degrees_to_radians(-30.0)),
 ];
