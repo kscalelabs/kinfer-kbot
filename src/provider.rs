@@ -133,23 +133,79 @@ impl KBotProvider {
     pub async fn move_to_home(&self) -> Result<(), ModelError> {
         let uuid = uuid::Uuid::new_v4();
         debug!("provider::move_to_home::START uuid={}", uuid);
+
+
+        /* Constants */
         let home_position = HOME_POSITION;
-        let mut commands = vec![];
-        for (id, position) in home_position {
-            let position_to_send = if self.go_to_zero { 0.0 } else { position };
-            commands.push(ActuatorCommand {
-                actuator_id: id as u32,
-                position: Some(position_to_send as f64),
-                velocity: None,
-                torque: None,
-            });
+        let actuator_ids = ACTUATOR_NAME_TO_ID
+            .iter()
+            .map(|(_, id)| *id)
+            .collect::<Vec<u32>>();
+
+
+        /* homing loop */
+        loop {
+            let mut max_err: f64 = 0.0;
+            self.trigger_actuator_read().await?;
+            // don't need speed here, delay for stability
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let cur_positions = self.get_actuator_state(&actuator_ids).await?;
+
+            // info!("Current actuator positions: {:?}", cur_positions);
+            // info!("Home positions: {:?}", home_position);
+
+            // compute errors and push towards home position
+            let mut commands = vec![];
+            for (id, position) in home_position {
+                if id == 15 || id == 25 {
+                    // Skip wrist joints for homing
+                    continue;
+                }
+                let position = position as f64;
+                let actuator_id = id as u32;
+                let current_position = cur_positions
+                    .iter()
+                    .find(|state| state.actuator_id == actuator_id)
+                    .and_then(|state| state.position)
+                    .expect("Actuator position not available, panic!");
+
+                let h_pos = if self.go_to_zero { 0.0 } else { position };
+
+
+                let error = h_pos - current_position;
+                let command = error.clamp(-4.0f64.to_radians(), 4.0f64.to_radians()) + 
+                    current_position;
+                info!("id: {}, qpos: {:.3}, command: {:.3}, error: {:.3}", id, current_position, command, error);
+
+                let error = error.abs();
+                max_err = max_err.max(error.abs());
+                // let command = 0.0f64 + 
+                // current_position;
+
+                // If the error is small enough, we can skip sending a command
+                if error > 0.08 {
+                    commands.push(ActuatorCommand {
+                        actuator_id,
+                        position: Some(command as f64),
+                        velocity: None,
+                        torque: None,
+                    });
+                }
+                max_err = max_err.max(error.abs());
+            }
+            info!("======== max_err: {:3} ======= ", max_err);
+
+            if max_err < 0.08 {
+                info!("All actuators are within the home position tolerance, skipping command.");
+                return Ok(());
+            } else {
+                self.actuators
+                    .command_actuators(commands)
+                    .await
+                    .map_err(|e| ModelError::Provider(e.to_string()))?;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
-        self.actuators
-            .command_actuators(commands)
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?;
-        debug!("provider::move_to_home::END uuid={}", uuid);
-        Ok(())
     }
 }
 

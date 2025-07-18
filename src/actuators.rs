@@ -39,6 +39,7 @@ pub struct ActionResponse {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ActuatorState {
     pub actuator_id: u32,
     pub position: Option<f64>,

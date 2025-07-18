@@ -78,12 +78,15 @@ impl ModelRuntime {
 
         runtime.spawn(async move {
             info!("Starting model runtime");
+
+            println!("Press enter to Home...");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
             // Moves to home position.
             model_provider.move_to_home().await?;
 
             // Wait for user to press enter
             println!("Press enter to start...");
-            let mut input = String::new();
             std::io::stdin().read_line(&mut input).unwrap();
 
             // NOW start the keyboard listener if enabled
