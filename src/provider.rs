@@ -182,15 +182,13 @@ impl KBotProvider {
                 // let command = 0.0f64 + 
                 // current_position;
 
-                // If the error is small enough, we can skip sending a command
-                if error > 0.08 {
-                    commands.push(ActuatorCommand {
-                        actuator_id,
-                        position: Some(command as f64),
-                        velocity: None,
-                        torque: None,
-                    });
-                }
+                // don't skip commands as we need at least one command to engage motors
+                commands.push(ActuatorCommand {
+                    actuator_id,
+                    position: Some(command as f64),
+                    velocity: None,
+                    torque: None,
+                });
                 max_err = max_err.max(error.abs());
             }
             info!("======== max_err: {:3} ======= ", max_err);
