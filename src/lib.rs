@@ -56,7 +56,7 @@ pub fn initialize_file_and_console_logging() {
         .with_span_events(FmtSpan::CLOSE)
         .with_ansi(true)
         .with_writer(|| CrWriter(std::io::stderr()))
-        .with_filter(EnvFilter::new("info"));
+        .with_filter(EnvFilter::new("info,robstride=trace"));
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer)
