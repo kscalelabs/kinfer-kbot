@@ -15,7 +15,6 @@ pub struct KBotProvider {
     actuators: Actuator,
     imu: IMU,
     start_time: Instant,
-    initial_heading: f32,
     go_to_zero: bool,
 }
 
@@ -40,13 +39,6 @@ impl KBotProvider {
             )
         )
         .map_err(|e| ModelError::Provider(e.to_string()))?;
-
-        let initial_quat = imu
-            .get_values()
-            .await
-            .map_err(|e| ModelError::Provider(e.to_string()))?
-            .quat;
-        let initial_heading = quat_to_euler(initial_quat).z;
 
         // Disable torque on all actuators
         for id in &kbot_actuator_ids {
@@ -82,7 +74,6 @@ impl KBotProvider {
             actuators,
             imu,
             start_time: Instant::now(),
-            initial_heading,
             go_to_zero,
         })
     }
@@ -173,13 +164,13 @@ impl KBotProvider {
 
 
                 let error = h_pos - current_position;
-                let command = error.clamp(-4.0f64.to_radians(), 4.0f64.to_radians()) + 
+                let command = error.clamp(-4.0f64.to_radians(), 4.0f64.to_radians()) +
                     current_position;
                 info!("id: {}, qpos: {:.3}, command: {:.3}, error: {:.3}", id, current_position, command, error);
 
                 let error = error.abs();
                 max_err = max_err.max(error.abs());
-                // let command = 0.0f64 + 
+                // let command = 0.0f64 +
                 // current_position;
 
                 // don't skip commands as we need at least one command to engage motors
@@ -248,16 +239,6 @@ impl ModelProvider for KBotProvider {
                 Accelerometer => {
                     let arr = self.get_accelerometer_from_values(&imu_values)?;
                     out.insert(Accelerometer, arr);
-                }
-                InitialHeading => {
-                    let arr = Array::from_shape_vec((1,), vec![self.initial_heading])
-                        .map_err(|e| ModelError::Provider(e.to_string()))?
-                        .into_dyn();
-                    out.insert(InitialHeading, arr);
-                }
-                Quaternion => {
-                    let arr = self.get_quat_from_values(&imu_values)?;
-                    out.insert(Quaternion, arr);
                 }
                 Gyroscope => {
                     let arr = self.get_gyroscope_from_values(&imu_values)?;
