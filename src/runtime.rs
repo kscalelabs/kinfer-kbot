@@ -4,10 +4,14 @@ use ::std::sync::atomic::{AtomicBool, Ordering};
 use ::std::sync::Arc;
 use ::std::time::Duration;
 use ::tokio::runtime::Runtime;
-use ::tokio::time::{interval, sleep};
+use ::tokio::time::sleep;
+use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFlags};
 
 use crate::constants::ACTUATOR_NAME_TO_ID;
+use crate::keyboard;
 use crate::provider::KBotProvider;
+use std::time::SystemTime;
+use tracing::{debug, info};
 
 // We trigger a read N milliseconds before reading the current actuator state,
 // to account for the asynchronicity of the CAN RX buffer.
@@ -21,10 +25,16 @@ pub struct ModelRuntime {
     magnitude_factor: f32,
     running: Arc<AtomicBool>,
     runtime: Option<Runtime>,
+    keyboard_enabled: bool,
 }
 
 impl ModelRuntime {
-    pub fn new(model_provider: Arc<KBotProvider>, model_runner: Arc<ModelRunner>, dt: u64) -> Self {
+    pub fn new(
+        model_provider: Arc<KBotProvider>,
+        model_runner: Arc<ModelRunner>,
+        dt: u64,
+        keyboard_enabled: bool,
+    ) -> Self {
         assert!(dt > TRIGGER_READ_BEFORE.as_millis() as u64);
 
         Self {
@@ -35,6 +45,7 @@ impl ModelRuntime {
             magnitude_factor: 1.0,
             running: Arc::new(AtomicBool::new(false)),
             runtime: None,
+            keyboard_enabled,
         }
     }
 
@@ -60,18 +71,29 @@ impl ModelRuntime {
         let dt = self.dt;
         let slowdown_factor = self.slowdown_factor;
         let magnitude_factor = self.magnitude_factor;
+        let keyboard_enabled = self.keyboard_enabled;
 
         let runtime = Runtime::new()?;
         running.store(true, Ordering::Relaxed);
 
         runtime.spawn(async move {
+            info!("Starting model runtime");
+
+            println!("Press enter to Home...");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
             // Moves to home position.
             model_provider.move_to_home().await?;
 
             // Wait for user to press enter
             println!("Press enter to start...");
-            let mut input = String::new();
             std::io::stdin().read_line(&mut input).unwrap();
+
+            // NOW start the keyboard listener if enabled
+            if keyboard_enabled {
+                keyboard::start_keyboard_listener_now();
+                println!("Keyboard controls are now active! Use ESC to exit or Ctrl+C.");
+            }
 
             for i in 1..5 {
                 println!("Starting in {} seconds...", 5 - i);
@@ -102,22 +124,50 @@ impl ModelRuntime {
             };
 
             // Wait for the first tick, since it happens immediately.
-            let mut read_interval = interval(dt);
-            let mut command_interval = interval(dt);
+            let read_interval =
+                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            read_interval
+                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
+                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
+
+            let command_interval =
+                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
+            command_interval
+                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
+                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
 
             // Start the two intervals N milliseconds apart. The first tick is
             // always instantaneous and represents the start of the interval
             // ticks.
-            read_interval.tick().await;
+            read_interval
+                .wait()
+                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
             sleep(dt - TRIGGER_READ_BEFORE).await;
-            command_interval.tick().await;
+            command_interval
+                .wait()
+                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
 
+            info!("Entering main control loop");
             while running.load(Ordering::Relaxed) {
+                let uuid = uuid::Uuid::new_v4();
+                let uuid_main_control_loop = uuid::Uuid::new_v4();
+                let start = SystemTime::now();
+                debug!("runtime::model_runner_step::START uuid={}", uuid);
+                debug!(
+                    "runtime::main_control_loop::START uuid={}",
+                    uuid_main_control_loop
+                );
+
                 let (output, next_carry) = model_runner
                     .step(carry)
                     .await
                     .map_err(|e| ModelError::Provider(e.to_string()))?;
                 carry = next_carry;
+                debug!(
+                    "runtime::model_runner_step::END uuid={}, elapsed: {:?}",
+                    uuid,
+                    start.elapsed()
+                );
 
                 for i in 1..(slowdown_factor + 1) {
                     if !running.load(Ordering::Relaxed) {
@@ -133,13 +183,23 @@ impl ModelRuntime {
                     // Trigger an actuator read N milliseconds before the next
                     // command tick, to make sure the observations are as fresh
                     // as possible.
-                    read_interval.tick().await;
+                    read_interval.wait().map_err(|e| {
+                        ModelError::Provider(format!("Failed to wait for timer: {}", e))
+                    })?;
                     model_provider.trigger_actuator_read().await?;
-                    command_interval.tick().await;
+                    command_interval.wait().map_err(|e| {
+                        ModelError::Provider(format!("Failed to wait for timer: {}", e))
+                    })?;
                 }
 
                 joint_positions = output;
+                debug!(
+                    "runtime::main_control_loop::END uuid={}, elapsed: {:?}",
+                    uuid_main_control_loop,
+                    start.elapsed()
+                );
             }
+            info!("Exiting main control loop");
             Ok::<(), ModelError>(())
         });
 
@@ -148,6 +208,7 @@ impl ModelRuntime {
     }
 
     pub fn stop(&mut self) {
+        info!("Stopping model runtime");
         self.running.store(false, Ordering::Relaxed);
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown_background();
