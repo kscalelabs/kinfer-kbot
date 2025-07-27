@@ -130,20 +130,10 @@ impl ModelRuntime {
                 .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
                 .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
 
-            let command_interval =
-                TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::empty()).unwrap();
-            command_interval
-                .set(Expiration::Interval(dt.into()), TimerSetTimeFlags::empty())
-                .map_err(|e| ModelError::Provider(format!("Failed to set timer: {}", e)))?;
-
             // Start the two intervals N milliseconds apart. The first tick is
             // always instantaneous and represents the start of the interval
             // ticks.
             read_interval
-                .wait()
-                .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
-            sleep(dt - TRIGGER_READ_BEFORE).await;
-            command_interval
                 .wait()
                 .map_err(|e| ModelError::Provider(format!("Failed to wait for timer: {}", e)))?;
 
@@ -187,9 +177,7 @@ impl ModelRuntime {
                         ModelError::Provider(format!("Failed to wait for timer: {}", e))
                     })?;
                     model_provider.trigger_actuator_read().await?;
-                    command_interval.wait().map_err(|e| {
-                        ModelError::Provider(format!("Failed to wait for timer: {}", e))
-                    })?;
+                    sleep(TRIGGER_READ_BEFORE).await;
                 }
 
                 joint_positions = output;

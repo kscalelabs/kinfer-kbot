@@ -125,14 +125,12 @@ impl KBotProvider {
         let uuid = uuid::Uuid::new_v4();
         debug!("provider::move_to_home::START uuid={}", uuid);
 
-
         /* Constants */
         let home_position = HOME_POSITION;
         let actuator_ids = ACTUATOR_NAME_TO_ID
             .iter()
             .map(|(_, id)| *id)
             .collect::<Vec<u32>>();
-
 
         /* homing loop */
         loop {
@@ -162,11 +160,13 @@ impl KBotProvider {
 
                 let h_pos = if self.go_to_zero { 0.0 } else { position };
 
-
                 let error = h_pos - current_position;
-                let command = error.clamp(-4.0f64.to_radians(), 4.0f64.to_radians()) +
-                    current_position;
-                info!("id: {}, qpos: {:.3}, command: {:.3}, error: {:.3}", id, current_position, command, error);
+                let command =
+                    error.clamp(-4.0f64.to_radians(), 4.0f64.to_radians()) + current_position;
+                info!(
+                    "id: {}, qpos: {:.3}, command: {:.3}, error: {:.3}",
+                    id, current_position, command, error
+                );
 
                 let error = error.abs();
                 max_err = max_err.max(error.abs());
